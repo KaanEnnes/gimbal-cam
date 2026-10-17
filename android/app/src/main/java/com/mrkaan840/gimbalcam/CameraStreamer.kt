@@ -42,6 +42,9 @@ class CameraStreamer(
     private var preview: Surface? = null
     private var request: CaptureRequest.Builder? = null
     @Volatile private var running = false
+    @Volatile var encoded = 0L
+        private set
+    val isOpen get() = session != null
     private var drainThread: Thread? = null
 
     // Canli ayarlar
@@ -145,6 +148,7 @@ class CameraStreamer(
                 val out = ByteArray(info.size)
                 buf.position(info.offset)
                 buf.get(out)
+                encoded++
                 sink(out, info.presentationTimeUs, info.flags)
             }
             try { enc.releaseOutputBuffer(idx, false) } catch (_: Exception) { break }

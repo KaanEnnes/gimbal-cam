@@ -46,6 +46,9 @@ class MainActivity : Activity() {
     private var localSpeed = 300
     @Volatile private var localHeld = false
     private var lastStatusAt = 0L
+    private var lastEncoded = -1L
+    private var lastEncodedAt = 0L
+    private var lastRestartAt = 0L
 
     private fun log(s: String) {
         android.util.Log.i("GimbalCam", s)
@@ -114,6 +117,16 @@ class MainActivity : Activity() {
             val now = System.currentTimeMillis()
             if (localHeld) lastMoveAt = now
             if (now - lastStatusAt > 2000) { lastStatusAt = now; sendStatus(); refreshStatus() }
+            // Kamera bekcisi: kare uretimi durduysa (baska uygulama kamerayi aldiysa vb.) yeniden baslat
+            if (started) {
+                val enc = camera.encoded
+                if (enc != lastEncoded) { lastEncoded = enc; lastEncodedAt = now }
+                else if (now - lastEncodedAt > 3000 && now - lastRestartAt > 5000) {
+                    lastRestartAt = now
+                    log("Kamera durmus, yeniden baslatiliyor")
+                    camera.setPreview(if (surface.holder.surface?.isValid == true) surface.holder.surface else null)
+                }
+            }
             if ((moveX != 0 || moveY != 0)) {
                 if (now - lastMoveAt > 500) {
                     // PC'den komut gelmiyor: guvenlik icin dur
@@ -197,7 +210,8 @@ class MainActivity : Activity() {
         val s = camera.settings
         status.text = "Gimbal: ${gimbal.state}\n" +
             "Kamera ${s.cameraId}: ${s.width}x${s.height} ${s.fps}fps\n" +
-            "PC: ${if (video.clientCount > 0) "bagli" else "bekleniyor"}  |  Wi-Fi IP: ${wifiIp()}"
+            "PC: ${if (video.clientCount > 0) "bagli" else "bekleniyor"}  |  Wi-Fi IP: ${wifiIp()}\n" +
+            "Kodlanan kare: ${camera.encoded}  |  Oturum: ${if (camera.isOpen) "acik" else "kapali"}"
     }
 
     @SuppressLint("ClickableViewAccessibility")
