@@ -71,10 +71,17 @@ class VideoServer(
     fun push(data: ByteArray, pts: Long, flags: Int) {
         val isConfig = flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
         val isKey = flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-        if (isConfig) config = data
-        val f = (if (isConfig) 2 else 0) or (if (isKey) 1 else 0)
+        if (isConfig) {
+            // Cozunurluk/lens degisince kodlayici yeniden baslar ve yeni SPS/PPS gonderir. Bagli istemciler
+            // bunu almazsa yeni kareleri eski ayarlarla cozer -> renkli blok copu. Herkesi yeni ayar +
+            // anahtar kareden baslat.
+            val old = config
+            if (old == null || !old.contentEquals(data)) clients.forEach { it.needKey = true }
+            config = data
+            return
+        }
+        val f = if (isKey) 1 else 0
         for (c in clients) {
-            if (isConfig) continue
             if (c.needKey) {
                 if (!isKey) continue
                 val cfg = config ?: continue

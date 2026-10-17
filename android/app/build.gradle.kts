@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -11,8 +11,8 @@ android {
         applicationId = "com.mrkaan840.gimbalcam"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.3"
+        versionCode = 5
+        versionName = "1.3.4"
     }
 
     buildTypes {
