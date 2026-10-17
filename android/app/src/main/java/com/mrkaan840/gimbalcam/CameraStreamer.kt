@@ -29,7 +29,12 @@ class CameraStreamer(
     private val log: (String) -> Unit,
     private val sink: (data: ByteArray, ptsUs: Long, flags: Int) -> Unit,
 ) {
-    data class Settings(var cameraId: String = "0", var width: Int = 1280, var height: Int = 720, var fps: Int = 30, var bitrate: Int = 6_000_000)
+    data class Settings(
+        var cameraId: String = "0", var width: Int = 1280, var height: Int = 720, var fps: Int = 30,
+        var bitrate: Int = 6_000_000,
+        /** "avc" (H.264) ya da "hevc" (H.265: ayni bant genisliginde daha temiz, oda tarayicilari cozemez) */
+        var codec: String = "avc",
+    )
 
     val settings = Settings()
     private val manager = ctx.getSystemService(CameraManager::class.java)
@@ -134,7 +139,8 @@ class CameraStreamer(
     }
 
     private fun setupEncoder(size: Size) {
-        val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, size.width, size.height).apply {
+        val mime = if (settings.codec == "hevc") MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        val fmt = MediaFormat.createVideoFormat(mime, size.width, size.height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, settings.bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, settings.fps)
@@ -147,14 +153,14 @@ class CameraStreamer(
             if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
             setInteger(MediaFormat.KEY_PRIORITY, 0)
         }
-        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val enc = MediaCodec.createEncoderByType(mime)
         enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         encoderSurface = enc.createInputSurface()
         enc.start()
         encoder = enc
         running = true
         drainThread = Thread({ drain(enc) }, "kodlayici").apply { start() }
-        log("Kodlayici: ${size.width}x${size.height} ${settings.fps}fps ${settings.bitrate / 1_000_000}Mbps")
+        log("Kodlayici: ${if (settings.codec == "hevc") "HEVC" else "H.264"} ${size.width}x${size.height} ${settings.fps}fps ${settings.bitrate / 1_000_000}Mbps")
     }
 
     private fun drain(enc: MediaCodec) {
@@ -168,7 +174,10 @@ class CameraStreamer(
                 buf.position(info.offset)
                 buf.get(out)
                 encoded++
-                sink(out, info.presentationTimeUs, info.flags)
+                // Yalnizca anahtar/ayar bitleri; 8 = HEVC isareti (PC dogru cozucuyu secsin)
+                val f = (info.flags and (MediaCodec.BUFFER_FLAG_KEY_FRAME or MediaCodec.BUFFER_FLAG_CODEC_CONFIG)) or
+                    (if (settings.codec == "hevc") 8 else 0)
+                sink(out, info.presentationTimeUs, f)
             }
             try { enc.releaseOutputBuffer(idx, false) } catch (_: Exception) { break }
         }

@@ -294,6 +294,14 @@ class MainActivity : Activity() {
             }
             "tilt" -> tiltWanted = o.optBoolean("v")
             "keyframe" -> camera.requestKeyFrame()
+            "codec" -> {
+                val c = if (o.optString("v") == "hevc") "hevc" else "avc"
+                if (c != camera.settings.codec) {
+                    camera.settings.codec = c
+                    camera.restart()
+                    main.postDelayed({ sendStatus() }, 800)
+                }
+            }
             "zoom" -> camera.setZoom(o.optDouble("v", 1.0).toFloat())
             "focus" -> camera.focusAt(o.optDouble("x", 0.5).toFloat(), o.optDouble("y", 0.5).toFloat())
             "autofocus" -> camera.autoFocus()
@@ -353,6 +361,7 @@ class MainActivity : Activity() {
                 .put("front", camera.isFront())
                 .put("cameras", org.json.JSONArray(camera.cameraList()))
                 .put("w", s.width).put("h", s.height).put("fps", s.fps).put("bitrate", s.bitrate)
+                .put("codec", s.codec)
         )
     }
 

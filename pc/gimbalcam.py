@@ -149,10 +149,15 @@ class Phone:
                 s = socket.create_connection((self.host, VIDEO_PORT), timeout=5)
                 s.settimeout(10)
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 256 * 1024)  # buyuk tampon = gecikme
-                codec = av.CodecContext.create("h264", "r")
-                codec.options = {"flags": "low_delay", "flags2": "fast"}
-                # Kare-iş parçacığı kod çözme her iş parçacığı için bir kare gecikme ekler
-                codec.thread_type = "SLICE"
+                def make_codec(name):
+                    c = av.CodecContext.create(name, "r")
+                    c.options = {"flags": "low_delay", "flags2": "fast"}
+                    # Kare-iş parçacığı kod çözme her iş parçacığı için bir kare gecikme ekler
+                    c.thread_type = "SLICE"
+                    return c
+
+                cur_hevc = False
+                codec = make_codec("h264")
                 self.video_ok = True
                 count, t0 = 0, time.time()
                 while not self._stop:
@@ -171,6 +176,10 @@ class Phone:
                             cb(data, pts, flags)
                         except Exception:
                             pass
+                    # Telefon H.264 <-> HEVC degistirince (bayrak 8) cozucuyu degistir
+                    if bool(flags & 8) != cur_hevc:
+                        cur_hevc = bool(flags & 8)
+                        codec = make_codec("hevc" if cur_hevc else "h264")
                     for pkt in codec.parse(data):
                         for fr in codec.decode(pkt):
                             img = fr.to_ndarray(format="bgr24")

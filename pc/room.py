@@ -68,9 +68,11 @@ class RoomServer:
     def viewer_names(self):
         return [v["name"] for v in list(self.viewers.values())]
 
+    hevc_active = False  # PC ayarlar: telefon su an HEVC gonderiyorsa tum izleyicilere JPEG
+
     @property
     def wants_jpeg(self):
-        return any(v["mode"] == "jpeg" for v in list(self.viewers.values()))
+        return any(v["mode"] == "jpeg" or self.hevc_active for v in list(self.viewers.values()))
 
     def push_frame(self, jpeg_bytes):
         """JPEG izleyicilere son kareyi gonder; yetismeyen izleyicide kare atlanir."""
@@ -79,6 +81,9 @@ class RoomServer:
 
     def push_packet(self, data, pts, flags):
         """Telefonun H.264 paketi (Phone dinleyicisi; video is parcaciginda cagrilir)."""
+        if flags & 8:
+            # HEVC: tarayicilar cozemez (oda acilinca PC telefonu H.264'e alir; o arada JPEG gider)
+            return
         if flags & 2:
             self._h264_config = data
             return
@@ -236,7 +241,7 @@ class RoomServer:
     def _fanout(self, jpeg):
         msg = b"\x02" + bytes(8) + jpeg
         for ws, v in list(self.viewers.items()):
-            if v["mode"] != "jpeg" or v["busy"] or ws.closed:
+            if (v["mode"] != "jpeg" and not self.hevc_active) or v["busy"] or ws.closed:
                 continue
             v["busy"] = True
             self._loop.create_task(self._send(ws, v, msg))

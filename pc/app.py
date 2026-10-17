@@ -480,6 +480,11 @@ class MainWindow(QMainWindow):
         self.btn_torch.toggled.connect(lambda on: self.send(t="torch", v=on))
         row.addWidget(self.btn_torch)
         lay.addLayout(row)
+        self.chk_hevc = QCheckBox("HEVC (aynı hızda daha temiz görüntü)")
+        self.chk_hevc.setToolTip("H.265 kodlama: aynı bant genişliğinde yaklaşık iki kat temiz. Oda açıkken otomatik H.264'e döner (tarayıcılar HEVC çözemez).")
+        self.chk_hevc.setChecked(self.settings.value("hevc", "false") == "true")
+        self.chk_hevc.toggled.connect(self.toggle_hevc)
+        lay.addWidget(self.chk_hevc)
         self.chk_horizon = QCheckBox("Ufuk kilidi (görüntüyü hep düz tut)")
         self.chk_horizon.setChecked(self.settings.value("horizon", "false") == "true")
         self.chk_horizon.setToolTip("Telefonun eğimini ölçüp görüntüyü ters yönde çevirir ve hafifçe kırpar")
@@ -630,6 +635,7 @@ class MainWindow(QMainWindow):
             self.tunnel.start()
             self._room_phone = None
             self.btn_room.setText("Odayı kapat")
+            self.last_wants_sent = 0.0  # HEVC aciksa hemen H.264'e gec (tarayicilar icin)
             self.room_pass.setEnabled(False)
             self.room_code.setText("Oda açılıyor…")
             self.room_info.setText("İnternete açılıyor (5-15 sn).")
@@ -641,6 +647,7 @@ class MainWindow(QMainWindow):
                     self.phone.packet_listeners.remove(self.room.push_packet)
                 self.room.stop()
             self.room = self.tunnel = None
+            self.last_wants_sent = 0.0  # oda kapandi: HEVC secildiyse hemen geri don
             self.btn_room.setText("Oda kur")
             self.room_pass.setEnabled(True)
             self.room_code.setText("")
@@ -791,6 +798,10 @@ class MainWindow(QMainWindow):
         if self.room:
             self.room.set_info(gCharging=charging, gBattery=bat, sleeping=charging and self.chk_sleep.isChecked(),
                                wakeWanted=now - self.wake_wanted_at < 30)
+
+    def toggle_hevc(self, on):
+        self.settings.setValue("hevc", "true" if on else "false")
+        self.last_wants_sent = 0.0  # hemen telefona bildir
 
     def toggle_sound(self, on):
         if on and not self.player.start():
@@ -1022,6 +1033,11 @@ class MainWindow(QMainWindow):
             want_audio = self.btn_sound.isChecked() or bool(self.room and self.room.audio_wanted)
             self.send(t="audio", v=want_audio)
             self.send(t="tilt", v=self.chk_horizon.isChecked())
+            # HEVC yalnizca oda kapaliyken (odadaki tarayicilar H.264 istiyor)
+            want_hevc = self.chk_hevc.isChecked() and self.room is None
+            self.send(t="codec", v="hevc" if want_hevc else "avc")
+            if self.room:
+                self.room.hevc_active = st.get("codec") == "hevc"
         key = (st.get("camera"), self.rot)
         amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
         if self.cal is not None:

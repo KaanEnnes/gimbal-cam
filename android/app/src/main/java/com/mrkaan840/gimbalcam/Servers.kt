@@ -23,7 +23,7 @@ const val QUEUE_FRAMES = 15
 /**
  * Goruntu sunucusu. Her kare su sekilde gider:
  *   uzunluk(int32) | pts mikrosaniye(int64) | bayraklar(int8) | H.264 Annex-B verisi
- * Bayrak 2 = codec ayari (SPS/PPS), 1 = anahtar kare, 4 = ses (PCM 16 bit, 24 kHz, mono).
+ * Bayrak 2 = codec ayari (SPS/PPS), 1 = anahtar kare, 4 = ses (PCM 16 bit, 24 kHz, mono), 8 = HEVC (yoksa H.264).
  */
 class VideoServer(
     private val log: (String) -> Unit,
@@ -38,6 +38,7 @@ class VideoServer(
 
     private val clients = CopyOnWriteArrayList<Client>()
     @Volatile private var config: ByteArray? = null
+    @Volatile private var configFlags = 2
     private var server: ServerSocket? = null
     val clientCount get() = clients.size
 
@@ -78,15 +79,16 @@ class VideoServer(
             val old = config
             if (old == null || !old.contentEquals(data)) clients.forEach { it.needKey = true }
             config = data
+            configFlags = 2 or (flags and 8)
             return
         }
-        val f = if (isKey) 1 else 0
+        val f = (if (isKey) 1 else 0) or (flags and 8)
         for (c in clients) {
             if (c.needKey) {
                 if (!isKey) continue
                 val cfg = config ?: continue
                 c.q.clear()
-                c.q.offer(Triple(cfg, pts, 2))
+                c.q.offer(Triple(cfg, pts, configFlags))
                 c.needKey = false
             }
             // Kuyrukta ses de var: yalnizca goruntu birikimi ~8 kareyi asinca tikanma say
