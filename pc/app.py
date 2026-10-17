@@ -599,10 +599,11 @@ class MainWindow(QMainWindow):
             my = int((jy + ky) * self.speed)
         elif self.tracking and self.frame is not None and new:
             self.tracker_dead(self.dead)
-            mx, my = self.tracker.update(self.frame, self.speed)
-            if st.get("front"):
-                # Gimbal telefonu yukari egince on kamera asagi bakar: dikey yon ters
-                my = -my
+            key = (st.get("camera"), self.rot)
+            if key not in self.tracker.signs:
+                # Baslangic tahmini: on kamerada dikey ters (telefon yukari egilince on kamera asagi bakar)
+                self.tracker.signs[key] = (1, -1 if st.get("front") else 1)
+            mx, my = self.tracker.update(self.frame, self.speed, key)
         elif self.tracking:
             mx, my = self.last_cmd[0] or (0, 0)
         else:

@@ -62,9 +62,9 @@ class MainActivity : Activity() {
                 // Yatay kilitli ekranin dogal yonu 270 derece; aradaki fark kadar donmus demektir
                 val rel = ((deg - 270) % 360 + 360) % 360
                 val snapped = ((rel + 45) / 90 % 4) * 90
-                // Histerezis: kose bolgelerinde (±20 derece) karar degistirme
+                // Histerezis: yeni yone ancak ±25 derece yaklasinca gec (kose bolgelerinde titremesin)
                 val dist = kotlin.math.abs(((rel - snapped + 540) % 360) - 180)
-                if (snapped != rotation && dist > 160) {
+                if (snapped != rotation && dist < 25) {
                     rotation = snapped
                     log("Yon: $rotation derece")
                     main.post { sendStatus() }

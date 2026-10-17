@@ -198,8 +198,31 @@ class FaceTracker:
         self.sx = 0.0
         self.sy = 0.0
         self.dead = 0.08
+        # Eksen yonleri (+1/-1). Kameraya/yone gore degisir; takip sirasinda kendini ayarlar.
+        self.signs = {}
+        self.key = None
+        self._win = [None, None]  # eksen basina (baslangic zamani, baslangic hatasi)
 
-    def update(self, frame, max_speed):
+    def _learn(self, axis, err):
+        """Gimbal bir yone donerken yuz merkezden uzaklasiyorsa o eksenin yonunu cevir."""
+        now = time.time()
+        w = self._win[axis]
+        if abs(err) < 0.2:
+            self._win[axis] = None
+            return
+        if w is None or (w[1] > 0) != (err > 0):
+            self._win[axis] = (now, err)
+            return
+        if now - w[0] < 0.8:
+            return
+        if abs(err) > abs(w[1]) + 0.06:
+            sx, sy = self.signs.get(self.key, (1, 1))
+            self.signs[self.key] = (-sx, sy) if axis == 0 else (sx, -sy)
+            print(f"Takip yonu duzeltildi: {'yatay' if axis == 0 else 'dikey'} eksen ters ({self.key})")
+        self._win[axis] = (now, err)
+
+    def update(self, frame, max_speed, key=None):
+        self.key = key
         h, w = frame.shape[:2]
         scale = 320 / w
         small = cv2.cvtColor(cv2.resize(frame, (320, int(h * scale))), cv2.COLOR_BGR2GRAY)
@@ -225,8 +248,11 @@ class FaceTracker:
         ex = ((x + bw / 2) - w / 2) / (w / 2)  # -1..1, + = sagda
         ey = (h / 2 - (y + bh / 2.5)) / (h / 2)  # + = yukarida (yuzu biraz ust tarafa koy)
         dead = self.dead
-        tx = 0 if abs(ex) < dead else ex
-        ty = 0 if abs(ey) < dead else ey
+        self._learn(0, ex)
+        self._learn(1, ey)
+        sgx, sgy = self.signs.get(self.key, (1, 1))
+        tx = 0 if abs(ex) < dead else ex * sgx
+        ty = 0 if abs(ey) < dead else ey * sgy
         # Yumusatma: ani hiz sicramalari olmasin
         self.sx = self.sx * 0.6 + tx * 0.4
         self.sy = self.sy * 0.6 + ty * 0.4
