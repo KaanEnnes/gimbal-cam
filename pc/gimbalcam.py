@@ -115,6 +115,8 @@ class Phone:
         # Akicilik tamponu: Wi-Fi gecikme dalgalanmasini gizlemek icin kareleri telefonun zamanlamasina gore
         # sabit bir gecikmeyle goster. 0 = kapali (en dusuk gecikme).
         self.jitter = 0.0
+        self.latest = None
+        self.latest_id = 0
         self._jbuf = deque(maxlen=90)       # (pts sn, kare)
         self._jlock = threading.Lock()
         self._arrivals = deque(maxlen=120)  # (varis - pts) gecmisi; en kucugu = en az gecikmis kare
@@ -184,6 +186,9 @@ class Phone:
                         for fr in codec.decode(pkt):
                             img = fr.to_ndarray(format="bgr24")
                             count += 1
+                            # Takip icin her zaman en taze kare (akicilik tamponunun gecikmesi takibi salindirir)
+                            self.latest = img
+                            self.latest_id += 1
                             if self.jitter > 0 and pts > 0:
                                 with self._jlock:
                                     self._jbuf.append((pts / 1e6, img))
@@ -344,6 +349,11 @@ class FaceTracker:
         self.sx = 0.0
         self.sy = 0.0
         self.dead = 0.08
+        # PD kontrol durumu: eksen basina (onceki hata, aktif mi)
+        self._pe = [0.0, 0.0]
+        self._de = [0.0, 0.0]
+        self._active = [False, False]
+        self._t = time.time()
         # Kaybolunca son goruldugu yone dogru arama
         self.last_e = None
         self.last_seen = 0.0
@@ -403,14 +413,31 @@ class FaceTracker:
         x, y, bw, bh = self.box
         ex = ((x + bw / 2) - w / 2) / (w / 2)  # -1..1, + = yuz sagda
         ey = (h / 2 - (y + bh / 2.5)) / (h / 2)  # + = yuz yukarida (yuzu biraz ust tarafa koy)
-        dead = self.dead
-        tx = 0 if abs(ex) < dead else ex
-        ty = 0 if abs(ey) < dead else ey
         self.last_e = (ex, ey)
-        self.last_seen = time.time()
-        # Yumusatma: ani hiz sicramalari olmasin
-        self.sx = self.sx * 0.6 + tx * 0.4
-        self.sy = self.sy * 0.6 + ty * 0.4
+        now = time.time()
+        self.last_seen = now
+        dt = max(0.01, min(0.2, now - self._t))
+        self._t = now
+        out = []
+        for i, e in enumerate((ex, ey)):
+            # Histerezisli olu bolge: ortalaninca kucuk oynamalarda yeniden kipirdama
+            if self._active[i] and abs(e) < self.dead:
+                self._active[i] = False
+            elif not self._active[i] and abs(e) > self.dead * 1.8:
+                self._active[i] = True
+            # Turev (yuz merkeze hizla yaklasiyorsa fren): salinimi/asmayi onler
+            de = (e - self._pe[i]) / dt
+            self._de[i] = 0.6 * self._de[i] + 0.4 * de
+            self._pe[i] = e
+            if not self._active[i]:
+                out.append(0.0)
+                continue
+            u = 0.75 * e + 0.12 * self._de[i]
+            # Hata isaretinin tersine itme (asma) yok; hiz ayarin en fazla %60'i
+            if u * e < 0:
+                u = 0.0
+            out.append(max(-0.6, min(0.6, u)))
+        self.sx, self.sy = out
         return int(self.sx * max_speed), int(self.sy * max_speed)
 
 

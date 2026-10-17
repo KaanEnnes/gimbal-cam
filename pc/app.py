@@ -1061,9 +1061,18 @@ class MainWindow(QMainWindow):
             elif self.tracking and key not in self.maps and self.frame is not None and ph.video_ok:
                 self.start_calibration()
                 mx = my = 0
-            elif self.tracking and self.frame is not None and new:
+            elif self.tracking and ph.latest is not None and ph.latest_id != getattr(self, "_track_seen", -1):
+                # Takip en taze kareyle calisir (ekrandaki akicilik tamponu ~0.2 sn geride; gecikme salinim yapar)
+                self._track_seen = ph.latest_id
                 self.tracker.dead = self.dead
-                right, up = self.tracker.update(self.frame, self.speed)
+                tf = ph.latest
+                if self.rot == 90:
+                    tf = cv2.rotate(tf, cv2.ROTATE_90_CLOCKWISE)
+                elif self.rot == 180:
+                    tf = cv2.rotate(tf, cv2.ROTATE_180)
+                elif self.rot == 270:
+                    tf = cv2.rotate(tf, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                right, up = self.tracker.update(tf, self.speed)
                 mx, my = amap.to_cmd(right, up)
             elif self.tracking:
                 mx, my = self.last_cmd[0] or (0, 0)
