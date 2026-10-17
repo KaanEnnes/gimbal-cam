@@ -64,7 +64,29 @@ class MainActivity : Activity() {
     // PC goruntuyu bu kadar saat yonunde dondurur.
     @Volatile private var rotation = 0
     private var lastTiltAt = 0L
-    @Volatile private var lastResidual = 0
+    @Volatile private var lastResidual = 0.0
+    @Volatile private var tiltWanted = false
+
+    // Ufuk kilidi: yercekimi sensoru (ivmeolcer + jiroskop birlesik, yumusak) ile ondalikli egiklik
+    private val gravityListener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            val gx = e.values[0].toDouble(); val gy = e.values[1].toDouble(); val gz = e.values[2].toDouble()
+            // Telefon yatay (masada duz) ise egiklik anlamsiz
+            if (kotlin.math.abs(gz) > 8.5) return
+            // OrientationEventListener ile ayni olcu: saat yonunde artan derece (0 = dik portre)
+            var o = 90.0 - Math.toDegrees(kotlin.math.atan2(-gy, gx))
+            o = ((o % 360) + 360) % 360
+            var res = ((o - 270 - rotation) % 360 + 360) % 360
+            if (res > 180) res -= 360
+            lastResidual = res
+            val now = System.currentTimeMillis()
+            if (tiltWanted && now - lastTiltAt > 50) {
+                lastTiltAt = now
+                control.broadcast(JSONObject().put("t", "tilt").put("a", Math.round(res * 10) / 10.0))
+            }
+        }
+        override fun onAccuracyChanged(s: android.hardware.Sensor, a: Int) {}
+    }
     @Volatile private var gimbalMode = 1
     private val orientation by lazy {
         object : OrientationEventListener(this) {
@@ -73,16 +95,7 @@ class MainActivity : Activity() {
                 // Yatay kilitli ekranin dogal yonu 270 derece; aradaki fark kadar donmus demektir
                 val rel = ((deg - 270) % 360 + 360) % 360
                 val snapped = ((rel + 45) / 90 % 4) * 90
-                // Ufuk kilidi icin: dortlu yonden kalan kucuk egiklik (-45..45 derece), en fazla 15/sn
-                var residual = rel - snapped
-                if (residual > 180) residual -= 360
-                if (residual < -180) residual += 360
-                lastResidual = residual
-                val tnow = System.currentTimeMillis()
-                if (tnow - lastTiltAt > 66) {
-                    lastTiltAt = tnow
-                    control.broadcast(JSONObject().put("t", "tilt").put("a", residual))
-                }
+
                 // Histerezis: yeni yone ancak ±25 derece yaklasinca gec (kose bolgelerinde titremesin)
                 val dist = kotlin.math.abs(((rel - snapped + 540) % 360) - 180)
                 if (snapped != rotation && dist < 25) {
@@ -166,13 +179,15 @@ class MainActivity : Activity() {
             .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "GimbalCam")
             .apply { setReferenceCounted(false); acquire() }
         if (orientation.canDetectOrientation()) orientation.enable()
+        val sm = getSystemService(android.hardware.SensorManager::class.java)
+        (sm.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) ?: sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER))
+            ?.let { sm.registerListener(gravityListener, it, android.hardware.SensorManager.SENSOR_DELAY_GAME) }
         currentBitrate = camera.settings.bitrate
         targetBitrate = camera.settings.bitrate
         video.start()
         control.start()
         gimbal.start()
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audio.start()
-        else log("Mikrofon izni yok: ses gonderilmeyecek")
+        // Mikrofon, PC biri dinliyor dediginde acilir ("audio" komutu); kimse dinlemiyorsa bant genisligi harcamaz
         if (surface.holder.surface?.isValid == true) camera.start(surface.holder.surface)
         refreshStatus()
     }
@@ -182,6 +197,7 @@ class MainActivity : Activity() {
         main.removeCallbacksAndMessages(null)
         try { wifiLock?.release() } catch (_: Exception) {}
         orientation.disable()
+        getSystemService(android.hardware.SensorManager::class.java).unregisterListener(gravityListener)
         gimbal.stop()
         audio.stop()
         camera.stop()
@@ -203,7 +219,7 @@ class MainActivity : Activity() {
             }
             if (now - lastStatusAt > 2000) { lastStatusAt = now; sendStatus(); refreshStatus() }
             // Telefon sabitken dinleyici yeni deger vermez: son egikligi yarim saniyede bir tekrarla
-            if (now - lastTiltAt > 500) {
+            if (tiltWanted && now - lastTiltAt > 500) {
                 lastTiltAt = now
                 control.broadcast(JSONObject().put("t", "tilt").put("a", lastResidual))
             }
@@ -251,6 +267,7 @@ class MainActivity : Activity() {
             "hello" -> main.post { sendStatus() }
             "move" -> setMove(o.optInt("x"), o.optInt("y"))
             "stop" -> setMove(0, 0)
+            "bye" -> { setMove(0, 0); audio.stop(); tiltWanted = false }
             "center" -> { setMove(0, 0); gimbal.send(GimbalBle.angle(0, 0, 0)) }
             "gmode" -> {
                 // 1 = Pan/Tilt takip, 2 = Yatay takip, 3 = Tum eksenler kilitli, 4 = POV
@@ -265,6 +282,12 @@ class MainActivity : Activity() {
                 val bytes = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
                 gimbal.send(GimbalBle.wrap(o.optInt("type", 3), bytes))
             }
+            "audio" -> {
+                val on = o.optBoolean("v")
+                if (on && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audio.start()
+                else if (!on) audio.stop()
+            }
+            "tilt" -> tiltWanted = o.optBoolean("v")
             "zoom" -> camera.setZoom(o.optDouble("v", 1.0).toFloat())
             "focus" -> camera.focusAt(o.optDouble("x", 0.5).toFloat(), o.optDouble("y", 0.5).toFloat())
             "autofocus" -> camera.autoFocus()
@@ -304,11 +327,7 @@ class MainActivity : Activity() {
                 main.post { sendStatus(); refreshStatus() }
             }
         }
-        val key = hex.take(12)
-        val now = System.currentTimeMillis()
-        if (now - (lastNotify[key] ?: 0) < 500) return
-        lastNotify[key] = now
-        control.broadcast(JSONObject().put("t", "gnotify").put("hex", hex))
+
     }
 
     private fun sendStatus() {

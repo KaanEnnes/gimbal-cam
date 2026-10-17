@@ -170,6 +170,8 @@ class ControlServer(private val log: (String) -> Unit, private val onCommand: (J
             outs.remove(w)
             try { s.close() } catch (_: Exception) {}
             onCommand(JSONObject().put("t", "stop"))
+            // Son PC de gittiyse ses/egim gibi istege bagli akislari kapat
+            if (outs.isEmpty()) onCommand(JSONObject().put("t", "bye"))
             log("PC kontrol baglantisi kapandi")
         }
     }

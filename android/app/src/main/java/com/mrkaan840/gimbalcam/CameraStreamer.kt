@@ -138,7 +138,9 @@ class CameraStreamer(
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, settings.bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, settings.fps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            // Anahtar kare buyuk bir paket; zayif Wi-Fi'de periyodik sicrama kuyrugu tasirir.
+            // 3 sn'de bir yeter: yeni izleyici ve tikanmada zaten aninda isteniyor.
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 3)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
             // Dusuk gecikme: B-kare yok, gecikmeli cikti yok
             setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)

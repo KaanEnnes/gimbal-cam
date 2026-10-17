@@ -320,6 +320,7 @@ class MainWindow(QMainWindow):
         self.player = AudioPlayer()
         self.wake_wanted_at = 0.0     # sarjdayken biri kullanmak istedi
         self.tilt_s = 0.0             # ufuk kilidi: yumusatilmis egiklik
+        self.last_wants_sent = 0.0    # telefona "ses/egim istiyorum" bildirimi
         self.last_tilt_push = 0.0
         self.last_activity = time.time()
         self.last_charge_hint = 0.0
@@ -981,15 +982,16 @@ class MainWindow(QMainWindow):
                 f0 = cv2.rotate(f0, cv2.ROTATE_90_COUNTERCLOCKWISE)
             if self.chk_horizon.isChecked():
                 # Telefonun egikligi kadar ters cevir; kose bosluklari gorunmesin diye hafif yakinlas
-                # Ivmeolcer gimbal titresimiyle oynar: guclu yumusatma + 1 derece olu bolge
-                self.tilt_s = 0.92 * self.tilt_s + 0.08 * (sign * ph.tilt)
-                a = max(-30.0, min(30.0, self.tilt_s))
-                if abs(a) > 1.0:
+                # Yercekimi sensoru zaten yumusak: hafif yumusatma, 0.5 derece olu bolge
+                self.tilt_s = 0.6 * self.tilt_s + 0.4 * (sign * ph.tilt)
+                a = max(-44.0, min(44.0, self.tilt_s))
+                if abs(a) > 0.5:
+                    # Zoom yok: goruntu ayni boyutta sadece doner; acilan koseler bulanik arka planla dolar
                     h, w = f0.shape[:2]
-                    r = math.radians(abs(a))
-                    zoom = math.cos(r) + (max(w, h) / min(w, h)) * math.sin(r)
-                    M = cv2.getRotationMatrix2D((w / 2, h / 2), -a, zoom)
-                    f0 = cv2.warpAffine(f0, M, (w, h), flags=cv2.INTER_LINEAR)
+                    bg = cv2.resize(cv2.blur(cv2.resize(f0, (max(1, w // 10), max(1, h // 10))), (5, 5)), (w, h))
+                    bg = (bg * 0.55).astype(f0.dtype)
+                    M = cv2.getRotationMatrix2D((w / 2, h / 2), -a, 1.0)
+                    f0 = cv2.warpAffine(f0, M, (w, h), dst=bg, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_TRANSPARENT)
             else:
                 self.tilt_s = 0.0
             self.frame = f0
@@ -1002,6 +1004,12 @@ class MainWindow(QMainWindow):
             ph.audio_listeners.append(self._on_audio)
             self._audio_phone = ph
         self.room_tick(now)
+        # Kullanilmayan ozellikler bant genisligi yemesin: telefona yalnizca gerekeni iste (2 sn'de bir tazele)
+        if now - self.last_wants_sent > 2.0:
+            self.last_wants_sent = now
+            want_audio = self.btn_sound.isChecked() or bool(self.room and self.room.audio_wanted)
+            self.send(t="audio", v=want_audio)
+            self.send(t="tilt", v=self.chk_horizon.isChecked())
         key = (st.get("camera"), self.rot)
         amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
         if self.cal is not None:

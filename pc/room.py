@@ -93,7 +93,7 @@ class RoomServer:
         msg = b"\x03" + bytes(8) + pcm
         for ws, v in list(self.viewers.items()):
             # Goruntuyle ayni sirayla gider; ag tikaliysa biriktirme, parcayi at
-            if ws.closed or v.get("audioPending", 0) > 4:
+            if ws.closed or not v.get("sound") or v.get("audioPending", 0) > 4:
                 continue
             v["audioPending"] = v.get("audioPending", 0) + 1
             self._loop.create_task(self._send_audio(ws, v, msg))
@@ -121,6 +121,10 @@ class RoomServer:
             await ws.send_json(msg)
         except Exception:
             pass
+
+    @property
+    def audio_wanted(self):
+        return any(v.get("sound") for v in list(self.viewers.values()))
 
     def pop_commands(self):
         cmds, self.commands = self.commands, []
@@ -218,6 +222,9 @@ class RoomServer:
                         continue
                     self.move = (x, y, time.time())
                     self.mover = name
+                elif d.get("t") == "cmd" and d.get("c") == "sound":
+                    # Izleyicinin ses tercihi: kapaliysa ona ses gonderilmez (bant genisligi)
+                    self.viewers[ws]["sound"] = bool(d.get("v"))
                 elif d.get("t") == "cmd" and isinstance(d.get("c"), str) and len(self.commands) < 50:
                     d["_from"] = name
                     self.commands.append(d)
