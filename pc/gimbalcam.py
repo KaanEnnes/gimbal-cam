@@ -41,6 +41,12 @@ KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN = 2424832, 2490368, 2555904, 2621440
 
 
 def find_adb():
+    # Kurulumla gelen adb (exe'nin yanindaki adb klasoru) once
+    for base in (getattr(sys, "_MEIPASS", None), os.path.dirname(os.path.abspath(sys.argv[0]))):
+        if base:
+            p = os.path.join(base, "adb", "adb.exe")
+            if os.path.exists(p):
+                return p
     adb = shutil.which("adb")
     if adb:
         return adb
@@ -51,7 +57,8 @@ def find_adb():
 def run(cmd, timeout=6):
     """adb cagrisi; adb takilirsa (kablosuz baglanti offline) uygulama donmasin."""
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (subprocess.TimeoutExpired, OSError):
         return subprocess.CompletedProcess(cmd, 1, "", "")
 

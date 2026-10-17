@@ -269,16 +269,17 @@ class AxisMap:
 
 
 def default_map(rot, front):
-    """Olculmus varsayilanlar (arka kamera). Gimbal dikey moddayken motor eksenleri yer degistirir:
-    dikeyde (90) yatay motor goruntuyu yukari, dikey motor sola kaydiriyor."""
+    """Olculmus varsayilanlar (arka kamera, M1). Dikey modda (90) eksenler yer degistirmiyor,
+    sadece dikey motor ters calisiyor. On kamerada dikey yon ayrica tersine doner."""
+    if rot in (90, 270):
+        m = AxisMap(("x", 1), ("y", -1))
+    elif rot == 180:
+        m = AxisMap(("x", -1), ("y", -1))
+    else:
+        m = AxisMap(("x", 1), ("y", 1))
     if front:
-        return AxisMap(("x", 1), ("y", -1)) if rot in (0, 180) else AxisMap(("y", -1), ("x", -1))
-    return {
-        0: AxisMap(("x", 1), ("y", 1)),
-        90: AxisMap(("y", -1), ("x", 1)),
-        180: AxisMap(("x", -1), ("y", -1)),
-        270: AxisMap(("y", 1), ("x", -1)),
-    }.get(rot, AxisMap())
+        m = AxisMap(m.h, (m.v[0], -m.v[1]))
+    return m
 
 
 def _cal_gray(frame):
@@ -371,6 +372,10 @@ class MainWindow(QMainWindow):
         self.btn_connect.setObjectName("primary")
         self.btn_connect.clicked.connect(self.connect_phone)
         lay.addWidget(self.btn_connect)
+        b = QPushButton("Kablosuz eşleştir (QR)")
+        b.setToolTip("Kablosuz hata ayıklamayı QR koduyla eşleştir; kablo gerekmez")
+        b.clicked.connect(self.open_pairing)
+        lay.addWidget(b)
         self.dot_video = Dot("Görüntü")
         self.dot_ctl = Dot("Kontrol")
         self.dot_gimbal = Dot("Gimbal")
@@ -392,7 +397,7 @@ class MainWindow(QMainWindow):
         hint.setObjectName("muted")
         hint.setAlignment(Qt.AlignCenter)
         lay.addWidget(hint)
-        labeled_slider(lay, "Hız", 100, 3000, self.speed, str, lambda v: setattr(self, "speed", v))
+        labeled_slider(lay, "Hız", 100, 1500, self.speed, str, lambda v: setattr(self, "speed", v))
         b = QPushButton("Ortala")
         b.clicked.connect(lambda: self.send(t="center"))
         lay.addWidget(b)
@@ -527,11 +532,16 @@ class MainWindow(QMainWindow):
             x, y = 1 - y, x
         self.send(t="focus", x=x, y=y)
 
+    def open_pairing(self):
+        from kablosuz_eslestir import PairWindow
+        self.pair_win = PairWindow()
+        self.pair_win.show()
+
     def set_note(self, text):
         self.note = (text, time.time())
 
     # ---------- eksen kalibrasyonu ----------
-    CAL_SPEED = 350
+    CAL_SPEED = 300
 
     def start_calibration(self, force=False):
         if self.phone is None or self.frame is None:
@@ -557,7 +567,7 @@ class MainWindow(QMainWindow):
             if now - c["t"] >= 0.1:
                 # Telefon 500 ms komut gelmeyince durur; hareket boyunca tekrarla
                 self.send(t="move", **{"x": self.CAL_SPEED if a == "x" else 0, "y": self.CAL_SPEED if a == "y" else 0})
-            if now - c["t"] >= 0.35:
+            if now - c["t"] >= 0.3:
                 self.send(t="move", x=0, y=0)
                 c["step"], c["t"] = "settle", now
         elif step == "settle":
@@ -566,15 +576,16 @@ class MainWindow(QMainWindow):
                 f0 = c["f0"]
                 if f1.shape == f0.shape:
                     win = cv2.createHanningWindow((f0.shape[1], f0.shape[0]), cv2.CV_32F)
-                    (dx, dy), _ = cv2.phaseCorrelate(f0, f1, win)
-                    # Icerik sola kayiyorsa gorus saga donmustur
-                    c["res"][a] = (-dx, dy)
+                    (dx, dy), conf = cv2.phaseCorrelate(f0, f1, win)
+                    # Icerik sola kayiyorsa gorus saga donmustur. Dusuk guvenli olcumu kullanma.
+                    if conf >= 0.2:
+                        c["res"][a] = (-dx, dy)
                 self.send(t="move", **{"x": -self.CAL_SPEED if a == "x" else 0, "y": -self.CAL_SPEED if a == "y" else 0})
                 c["step"], c["t"] = "back", now
         elif step == "back":
             if now - c["t"] >= 0.1:
                 self.send(t="move", **{"x": -self.CAL_SPEED if a == "x" else 0, "y": -self.CAL_SPEED if a == "y" else 0})
-            if now - c["t"] >= 0.35:
+            if now - c["t"] >= 0.3:
                 self.send(t="move", x=0, y=0)
                 c["step"], c["t"] = "rest", now
         elif step == "rest":
@@ -588,8 +599,8 @@ class MainWindow(QMainWindow):
         rx = c["res"].get("x")
         ry = c["res"].get("y")
         if not rx or not ry or max(abs(rx[0]), abs(rx[1])) < 3 or max(abs(ry[0]), abs(ry[1])) < 3:
-            self.maps[c["key"]] = AxisMap()
-            self.set_note("Yön ölçümü başarısız (görüntü kaymadı); varsayılan yönler kullanılıyor.")
+            self.set_note("Yön ölçümü güvenilir değil (görüntü yeterince kaymadı); ölçülmüş varsayılan yönler kullanılıyor.")
+            self.maps[c["key"]] = default_map(c["key"][1], bool(self.phone and self.phone.status.get("front")))
             return
         sign = lambda v: 1 if v >= 0 else -1
         # Hangi komut ekseni goruntude yatay hareket ettiriyor?

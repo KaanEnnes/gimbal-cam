@@ -37,6 +37,7 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
             Triple(u("0000ffe0-0000-1000-8000-00805f9b34fb"), u("0000ffe1-0000-1000-8000-00805f9b34fb"), u("0000ffe2-0000-1000-8000-00805f9b34fb")),
             Triple(u("22b3a000-2617-f8c9-d28a-6728eaeaeaae"), u("22b3a004-2617-f8c9-d28a-6728eaeaeaae"), u("22b3a007-2617-f8c9-d28a-6728eaeaeaae")),
         )
+        const val MAX_SPEED = 1500
         val CCCD: UUID = u("00002902-0000-1000-8000-00805f9b34fb")
 
         fun crc8(b: ByteArray, n: Int): Byte {
@@ -64,9 +65,10 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
         fun handshake() = wrap(1, ByteArray(0))
 
         fun move(x: Int, y: Int): ByteArray {
-            val cx = x.coerceIn(-32000, 32000)
+            // Hiz siniri: cok yuksek hizla uc noktaya dayaninca gimbal motorlari kendini korumaya alip birakiyor
+            val cx = x.coerceIn(-MAX_SPEED, MAX_SPEED)
             // Gimbal'da pozitif dikey hiz asagi bakiyor; uygulamada y>0 = yukari
-            val cy = (-y).coerceIn(-32000, 32000)
+            val cy = (-y).coerceIn(-MAX_SPEED, MAX_SPEED)
             return wrap(3, byteArrayOf(0xAA.toByte(), 0x55, 0x00, 0x05, 0x20) + le16(cx) + le16(cy))
         }
 
