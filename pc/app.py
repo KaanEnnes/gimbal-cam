@@ -630,6 +630,7 @@ class MainWindow(QMainWindow):
                 return
             self.settings.setValue("room_pass", pw)
             self.room = RoomServer(pw)
+            self.room.on_talk = self._on_talk
             port = self.room.start()
             self.tunnel = QuickTunnel(port)
             self.tunnel.start()
@@ -685,7 +686,11 @@ class MainWindow(QMainWindow):
                 self.phone.packet_listeners.append(r.push_packet)
             self._room_phone = self.phone
         st = self.phone.status if self.phone else {}
+        talking = r.talking
+        if talking:
+            self.set_note(f"🎤 {talking} konuşuyor")
         r.set_info(
+            talking=talking,
             tracking=self.tracking, rot=self.rot, speed=self.speed, zoom=self.zoom,
             ev=self.ev_slider.value(), torch=self.btn_torch.isChecked(),
             camera=st.get("camera"), cameras=st.get("cameras", []), res=self.cb_res.currentIndex(),
@@ -714,6 +719,11 @@ class MainWindow(QMainWindow):
             ok, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 72])
             if ok:
                 r.push_frame(buf.tobytes())
+
+    def _on_talk(self, pcm, name):
+        # Oda is parcaciginda: izleyicinin sesini telefona (hoparlor) ilet
+        import base64
+        self.send(t="talk", pcm=base64.b64encode(pcm).decode())
 
     def remote_command(self, d):
         """Odadaki izleyicinin komutu. Ayni arayuz elemanlari uzerinden uygulanir (PC ekrani da guncellenir)."""

@@ -46,6 +46,10 @@ class RoomServer:
         self.commands = []          # izleyicilerden gelen ozellik komutlari (Qt tarafi isler)
         self._h264_config = None
         self.key_wanted = False     # bir izleyici anahtar kare bekliyor: PC telefondan hemen istesin
+        # Bas-konus: izleyicinin mikrofonu -> telefon hoparloru. Ayni anda tek konusan.
+        self.on_talk = None         # fn(pcm_bytes, isim) - PC telefona iletir
+        self.talker = None
+        self.talker_at = 0.0
         self.mover = ""
         self.info = {}
         self._loop = None
@@ -132,6 +136,10 @@ class RoomServer:
     def audio_wanted(self):
         return any(v.get("sound") for v in list(self.viewers.values()))
 
+    @property
+    def talking(self):
+        return self.talker if self.talker and time.time() - self.talker_at < 0.6 else None
+
     def pop_commands(self):
         cmds, self.commands = self.commands, []
         return cmds
@@ -178,7 +186,7 @@ class RoomServer:
         return request.headers.get("CF-Connecting-IP") or request.remote or "?"
 
     async def _ws(self, request):
-        ws = web.WebSocketResponse(heartbeat=20, max_msg_size=4096)
+        ws = web.WebSocketResponse(heartbeat=20, max_msg_size=16384)
         await ws.prepare(request)
         ip = self._client_ip(request)
         n, until = self.fails.get(ip, (0, 0))
@@ -214,6 +222,18 @@ class RoomServer:
         await ws.send_json({"t": "ok", **self.info})
         try:
             async for msg in ws:
+                if msg.type == WSMsgType.BINARY:
+                    # [5][PCM16 24 kHz mono] bas-konus sesi
+                    d = msg.data
+                    if d[:1] == b"\x05" and 2 < len(d) <= 8000 and self.on_talk:
+                        now = time.time()
+                        if self.talker in (None, name) or now - self.talker_at > 1.0:
+                            self.talker, self.talker_at = name, now
+                            try:
+                                self.on_talk(d[1:], name)
+                            except Exception:
+                                pass
+                    continue
                 if msg.type != WSMsgType.TEXT:
                     continue
                 try:

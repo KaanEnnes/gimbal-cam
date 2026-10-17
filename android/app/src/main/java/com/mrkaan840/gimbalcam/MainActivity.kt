@@ -42,6 +42,7 @@ class MainActivity : Activity() {
 
     // Telefonda yuz takibi (ag gecikmesi yok)
     private val follower = FaceFollower()
+    private val talk = TalkPlayer(::log)
     @Volatile private var manualUntil = 0L      // PC/oda joystick'i oynatinca takip kisa sure bekler
     @Volatile private var sleepGuard = true     // sarjdayken hareket etme
     private var lastFaceSent = 0L
@@ -153,7 +154,8 @@ class MainActivity : Activity() {
         video = VideoServer(::log, { camera.requestKeyFrame() }, ::onCongestion)
         camera = CameraStreamer(this, ::log) { d, pts, f -> video.push(d, pts, f) }
         control = ControlServer(::log, ::onCommand)
-        audio = AudioCapture(::log) { d, pts -> video.pushAudio(d, pts) }
+        // Bas-konus surerken mikrofonu sustur: konusan kisi kendi sesini (hoparlorden) geri duymasin
+        audio = AudioCapture(::log) { d, pts -> video.pushAudio(if (talk.talking) ByteArray(d.size) else d, pts) }
         camera.onFaces = ::onFaces
 
         askPermissions()
@@ -212,6 +214,7 @@ class MainActivity : Activity() {
         getSystemService(android.hardware.SensorManager::class.java).unregisterListener(gravityListener)
         gimbal.stop()
         audio.stop()
+        talk.stop()
         camera.stop()
         video.stop()
         control.stop()
@@ -334,6 +337,13 @@ class MainActivity : Activity() {
             }
             "tilt" -> tiltWanted = o.optBoolean("v")
             "keyframe" -> camera.requestKeyFrame()
+            "talk" -> {
+                // Odadaki izleyicinin sesi (base64 PCM16 24 kHz mono) -> telefon hoparloru
+                val b = o.optString("pcm")
+                if (b.isNotEmpty() && b.length < 20000) {
+                    try { talk.feed(android.util.Base64.decode(b, android.util.Base64.DEFAULT)) } catch (_: Exception) {}
+                }
+            }
             "codec" -> {
                 val c = if (o.optString("v") == "hevc") "hevc" else "avc"
                 if (c != camera.settings.codec) {
