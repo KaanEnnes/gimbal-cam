@@ -8,9 +8,11 @@ Merkezi sunucu yok. "Oda kur" denince:
 WebSocket protokolu (wss://<kod>.trycloudflare.com/ws):
   izleyici -> {"t":"auth","password":"...","name":"..."}      ilk mesaj, 10 sn icinde
   oda      -> {"t":"ok"} | {"t":"err","reason":"..."}
-  oda      -> ikili mesaj: JPEG kare
+  izleyici, auth icinde "codec":"h264" derse (WebCodecs) telefonun H.264 akisi aynen gelir; yoksa JPEG.
+  oda      -> ikili mesaj: [tip 1 bayt][pts 8 bayt][veri]  tip: 1=H.264 anahtar (SPS/PPS dahil), 0=H.264, 2=JPEG, 3=ses PCM16 24 kHz mono
   izleyici -> {"t":"move","x":-1..1,"y":-1..1}                 x>0 = gorus saga, y>0 = gorus yukari
-  oda      -> {"t":"info","viewers":n,"tracking":bool,...}   ara sira
+  izleyici -> {"t":"cmd","c":"track|center|zoom|ev|torch|autofocus|focus|camera|res|speed|recal", ...}
+  oda      -> {"t":"info","viewers":n,"tracking":bool,"rot":0..270,...}   ara sira
 """
 
 import asyncio
@@ -41,6 +43,8 @@ class RoomServer:
         self.viewers = {}           # ws -> {"name","ip","busy"}
         self.fails = {}             # ip -> (sayi, kilit_bitis)
         self.move = (0.0, 0.0, 0.0)  # (x, y, zaman)
+        self.commands = []          # izleyicilerden gelen ozellik komutlari (Qt tarafi isler)
+        self._h264_config = None
         self.mover = ""
         self.info = {}
         self._loop = None
@@ -63,10 +67,64 @@ class RoomServer:
     def viewer_names(self):
         return [v["name"] for v in list(self.viewers.values())]
 
+    @property
+    def wants_jpeg(self):
+        return any(v["mode"] == "jpeg" for v in list(self.viewers.values()))
+
     def push_frame(self, jpeg_bytes):
-        """Son kareyi bekleyen her izleyiciye gonder; yetismeyen izleyicide kare atlanir."""
+        """JPEG izleyicilere son kareyi gonder; yetismeyen izleyicide kare atlanir."""
         if self._loop and self.viewers:
             self._loop.call_soon_threadsafe(self._fanout, jpeg_bytes)
+
+    def push_packet(self, data, pts, flags):
+        """Telefonun H.264 paketi (Phone dinleyicisi; video is parcaciginda cagrilir)."""
+        if flags & 2:
+            self._h264_config = data
+            return
+        if self._loop and self.viewers:
+            self._loop.call_soon_threadsafe(self._fanout_h264, data, pts, bool(flags & 1))
+
+    def push_audio(self, pcm):
+        """Telefon sesi (PCM 16 bit, 24 kHz, mono) -> tum izleyicilere."""
+        if self._loop and self.viewers:
+            self._loop.call_soon_threadsafe(self._fanout_audio, pcm)
+
+    def _fanout_audio(self, pcm):
+        msg = b"\x03" + bytes(8) + pcm
+        for ws, v in list(self.viewers.items()):
+            # Goruntuyle ayni sirayla gider; ag tikaliysa biriktirme, parcayi at
+            if ws.closed or v.get("audioPending", 0) > 4:
+                continue
+            v["audioPending"] = v.get("audioPending", 0) + 1
+            self._loop.create_task(self._send_audio(ws, v, msg))
+
+    async def _send_audio(self, ws, v, msg):
+        try:
+            await ws.send_bytes(msg)
+        except Exception:
+            pass
+        finally:
+            v["audioPending"] -= 1
+
+    def push_tilt(self, angle):
+        """Ufuk kilidi acikken tarayicinin goruntuyu cevirmesi icin egiklik (sik gonderilir)."""
+        if self._loop and self.viewers:
+            self._loop.call_soon_threadsafe(self._fanout_json, {"t": "tilt", "a": round(angle, 1)})
+
+    def _fanout_json(self, msg):
+        for ws in list(self.viewers):
+            if not ws.closed:
+                self._loop.create_task(self._safe_json(ws, msg))
+
+    async def _safe_json(self, ws, msg):
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            pass
+
+    def pop_commands(self):
+        cmds, self.commands = self.commands, []
+        return cmds
 
     def set_info(self, **info):
         self.info.update(info)
@@ -141,7 +199,8 @@ class RoomServer:
             return ws
         self.fails.pop(ip, None)
         name = re.sub(r"[^\w çğıöşüÇĞİÖŞÜ.-]", "", str(data.get("name", "")))[:24] or "Misafir"
-        self.viewers[ws] = {"name": name, "ip": ip, "busy": False}
+        mode = "h264" if data.get("codec") == "h264" else "jpeg"
+        self.viewers[ws] = {"name": name, "ip": ip, "busy": False, "mode": mode, "needKey": True}
         await ws.send_json({"t": "ok", **self.info})
         try:
             async for msg in ws:
@@ -159,16 +218,37 @@ class RoomServer:
                         continue
                     self.move = (x, y, time.time())
                     self.mover = name
+                elif d.get("t") == "cmd" and isinstance(d.get("c"), str) and len(self.commands) < 50:
+                    d["_from"] = name
+                    self.commands.append(d)
         finally:
             self.viewers.pop(ws, None)
         return ws
 
     def _fanout(self, jpeg):
+        msg = b"\x02" + bytes(8) + jpeg
         for ws, v in list(self.viewers.items()):
-            if v["busy"] or ws.closed:
+            if v["mode"] != "jpeg" or v["busy"] or ws.closed:
                 continue
             v["busy"] = True
-            self._loop.create_task(self._send(ws, v, jpeg))
+            self._loop.create_task(self._send(ws, v, msg))
+
+    def _fanout_h264(self, data, pts, key):
+        for ws, v in list(self.viewers.items()):
+            if v["mode"] != "h264" or ws.closed:
+                continue
+            if v["busy"]:
+                # Ag yetismiyor: H.264'te kare atlanamaz, sonraki anahtar kareye kadar bekle
+                v["needKey"] = True
+                continue
+            if v["needKey"]:
+                if not key or not self._h264_config:
+                    continue
+                v["needKey"] = False
+            payload = (self._h264_config + data) if key and self._h264_config else data
+            msg = (b"\x01" if key else b"\x00") + max(pts, 0).to_bytes(8, "big") + payload
+            v["busy"] = True
+            self._loop.create_task(self._send(ws, v, msg))
 
     async def _send(self, ws, v, jpeg):
         try:

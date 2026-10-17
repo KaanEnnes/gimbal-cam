@@ -110,11 +110,16 @@ class Phone:
         self.frame_id = 0
         self.fps = 0.0
         self.status = {}
+        self.tilt = 0.0  # ufuk kilidi: telefonun dortlu yonden kalan egikligi (derece)
         self.video_ok = False
         self.control_ok = False
         self._ctl = None
         self._ctl_lock = threading.Lock()
         self._stop = False
+        # Ham H.264 paketlerini isteyenler (oda): fn(data, pts, flags) ; flags: 2=SPS/PPS, 1=anahtar kare
+        self.packet_listeners = []
+        # Ses (PCM 16 bit, 24 kHz, mono) dinleyicileri: fn(pcm_bytes)
+        self.audio_listeners = []
         threading.Thread(target=self._video_loop, daemon=True).start()
         threading.Thread(target=self._control_loop, daemon=True).start()
 
@@ -144,8 +149,21 @@ class Phone:
                 self.video_ok = True
                 count, t0 = 0, time.time()
                 while not self._stop:
-                    size, _pts, _flags = struct.unpack(">iqb", self._recv_exact(s, 13))
+                    size, pts, flags = struct.unpack(">iqb", self._recv_exact(s, 13))
                     data = self._recv_exact(s, size)
+                    if flags & 4:
+                        # Ses parcasi: goruntu cozucuye girmesin
+                        for cb in list(self.audio_listeners):
+                            try:
+                                cb(data)
+                            except Exception:
+                                pass
+                        continue
+                    for cb in list(self.packet_listeners):
+                        try:
+                            cb(data, pts, flags)
+                        except Exception:
+                            pass
                     for pkt in codec.parse(data):
                         for fr in codec.decode(pkt):
                             self.frame = fr.to_ndarray(format="bgr24")
@@ -175,6 +193,8 @@ class Phone:
                         msg = json.loads(line)
                         if msg.get("t") == "status":
                             self.status = msg
+                        elif msg.get("t") == "tilt":
+                            self.tilt = float(msg.get("a", 0))
                     except ValueError:
                         pass
                 raise ConnectionError("kontrol kapandi")
@@ -194,6 +214,65 @@ class Phone:
                 self._ctl.sendall(line)
             except OSError:
                 self._ctl = None
+
+
+class AudioPlayer:
+    """Telefon sesini PC hoparlorunden calar (kucuk tampon: ~120 ms)."""
+
+    RATE = 24000
+
+    def __init__(self):
+        self.buf = bytearray()
+        self.lock = threading.Lock()
+        self.stream = None
+        self.volume = 1.0
+
+    def start(self):
+        if self.stream:
+            return True
+        try:
+            import sounddevice as sd
+            self.stream = sd.RawOutputStream(samplerate=self.RATE, channels=1, dtype="int16",
+                                             blocksize=480, latency="low", callback=self._cb)
+            self.stream.start()
+            return True
+        except Exception as e:
+            print(f"Ses cikisi acilamadi: {e}")
+            self.stream = None
+            return False
+
+    def stop(self):
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+        with self.lock:
+            self.buf.clear()
+
+    def feed(self, pcm):
+        if not self.stream:
+            return
+        if self.volume != 1.0:
+            a = (np.frombuffer(pcm, dtype=np.int16).astype(np.float32) * self.volume)
+            pcm = np.clip(a, -32768, 32767).astype(np.int16).tobytes()
+        with self.lock:
+            self.buf += pcm
+            # Gecikme birikmesin: 250 ms'den fazlasini at
+            max_bytes = int(self.RATE * 0.25) * 2
+            if len(self.buf) > max_bytes:
+                del self.buf[: len(self.buf) - int(self.RATE * 0.12) * 2]
+
+    def _cb(self, outdata, frames, _time, _status):
+        need = frames * 2
+        with self.lock:
+            chunk = bytes(self.buf[:need])
+            del self.buf[:need]
+        outdata[: len(chunk)] = chunk
+        if len(chunk) < need:
+            outdata[len(chunk):] = b"\x00" * (need - len(chunk))
 
 
 def resource(name):

@@ -96,6 +96,8 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
     @Volatile var lastDropStatus = -1
         private set
     var onState: ((String) -> Unit)? = null
+    /** Gimbal'in gonderdigi durum paketleri (ham). Pil/sarj bilgisini cozmek icin PC'ye aktarilir. */
+    var onNotify: ((ByteArray) -> Unit)? = null
 
     private fun setState(s: String) {
         state = s
@@ -237,7 +239,12 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
         }
 
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
-            // Gimbal'in gonderdigi durum paketleri; simdilik sadece kayit
+            onNotify?.invoke(value)
+        }
+
+        @Deprecated("API 33 oncesi")
+        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
+            if (android.os.Build.VERSION.SDK_INT < 33) @Suppress("DEPRECATION") c.value?.let { onNotify?.invoke(it.copyOf()) }
         }
     }
 

@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var camera: CameraStreamer
     private lateinit var video: VideoServer
     private lateinit var control: ControlServer
+    private lateinit var audio: AudioCapture
     private var started = false
 
     // Gimbal hiz durumu
@@ -47,6 +48,13 @@ class MainActivity : Activity() {
     private var localSpeed = 300
     @Volatile private var localHeld = false
     private var lastStatusAt = 0L
+    private var lastTouchAt = System.currentTimeMillis()
+    private var dimmed = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        lastTouchAt = System.currentTimeMillis()
+        return super.dispatchTouchEvent(ev)
+    }
     private var lastEncoded = -1L
     private var lastEncodedAt = 0L
     private var lastRestartAt = 0L
@@ -55,6 +63,9 @@ class MainActivity : Activity() {
     // Telefonun gercek yonu (gimbal dikey moda gecince degisir). Uygulama ekrani yatay kilitli;
     // PC goruntuyu bu kadar saat yonunde dondurur.
     @Volatile private var rotation = 0
+    private var lastTiltAt = 0L
+    @Volatile private var lastResidual = 0
+    @Volatile private var gimbalMode = 1
     private val orientation by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(deg: Int) {
@@ -62,6 +73,16 @@ class MainActivity : Activity() {
                 // Yatay kilitli ekranin dogal yonu 270 derece; aradaki fark kadar donmus demektir
                 val rel = ((deg - 270) % 360 + 360) % 360
                 val snapped = ((rel + 45) / 90 % 4) * 90
+                // Ufuk kilidi icin: dortlu yonden kalan kucuk egiklik (-45..45 derece), en fazla 15/sn
+                var residual = rel - snapped
+                if (residual > 180) residual -= 360
+                if (residual < -180) residual += 360
+                lastResidual = residual
+                val tnow = System.currentTimeMillis()
+                if (tnow - lastTiltAt > 66) {
+                    lastTiltAt = tnow
+                    control.broadcast(JSONObject().put("t", "tilt").put("a", residual))
+                }
                 // Histerezis: yeni yone ancak ±25 derece yaklasinca gec (kose bolgelerinde titremesin)
                 val dist = kotlin.math.abs(((rel - snapped + 540) % 360) - 180)
                 if (snapped != rotation && dist < 25) {
@@ -101,19 +122,26 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Telefon gimbal uzerinde kilitliyken de calissin: kilit ekraninin ustunde acil, ekrani yak
+        if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
+        else @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         buildUi()
 
-        gimbal = GimbalBle(this, ::log).also { it.onState = { main.post { refreshStatus(); sendStatus() } } }
+        gimbal = GimbalBle(this, ::log).also {
+            it.onState = { main.post { refreshStatus(); sendStatus() } }
+            it.onNotify = ::onGimbalNotify
+        }
         video = VideoServer(::log, { camera.requestKeyFrame() }, ::onCongestion)
         camera = CameraStreamer(this, ::log) { d, pts, f -> video.push(d, pts, f) }
         control = ControlServer(::log, ::onCommand)
+        audio = AudioCapture(::log) { d, pts -> video.pushAudio(d, pts) }
 
         askPermissions()
         main.postDelayed(ticker, 100)
     }
 
     private fun askPermissions() {
-        val perms = mutableListOf(Manifest.permission.CAMERA)
+        val perms = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= 31) {
             perms += Manifest.permission.BLUETOOTH_SCAN
             perms += Manifest.permission.BLUETOOTH_CONNECT
@@ -125,8 +153,9 @@ class MainActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startAll()
-        else log("Izin verilmedi: kamera ve yakindaki cihazlar izni gerekli")
+        // Mikrofon izni verilmese de goruntu ve gimbal calissin
+        val camOk = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (camOk) startAll() else log("Izin verilmedi: kamera ve yakindaki cihazlar izni gerekli")
     }
 
     private fun startAll() {
@@ -142,6 +171,8 @@ class MainActivity : Activity() {
         video.start()
         control.start()
         gimbal.start()
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audio.start()
+        else log("Mikrofon izni yok: ses gonderilmeyecek")
         if (surface.holder.surface?.isValid == true) camera.start(surface.holder.surface)
         refreshStatus()
     }
@@ -152,6 +183,7 @@ class MainActivity : Activity() {
         try { wifiLock?.release() } catch (_: Exception) {}
         orientation.disable()
         gimbal.stop()
+        audio.stop()
         camera.stop()
         video.stop()
         control.stop()
@@ -163,7 +195,18 @@ class MainActivity : Activity() {
         override fun run() {
             val now = System.currentTimeMillis()
             if (localHeld) lastMoveAt = now
+            // 30 sn dokunulmazsa ekrani karart (pil); dokununca geri gelir
+            val dim = now - lastTouchAt > 30_000
+            if (dim != dimmed) {
+                dimmed = dim
+                window.attributes = window.attributes.apply { screenBrightness = if (dim) 0.01f else -1f }
+            }
             if (now - lastStatusAt > 2000) { lastStatusAt = now; sendStatus(); refreshStatus() }
+            // Telefon sabitken dinleyici yeni deger vermez: son egikligi yarim saniyede bir tekrarla
+            if (now - lastTiltAt > 500) {
+                lastTiltAt = now
+                control.broadcast(JSONObject().put("t", "tilt").put("a", lastResidual))
+            }
             if (currentBitrate < targetBitrate && now - lastCongestionAt > 5000 && now - lastRaiseAt > 3000) {
                 lastRaiseAt = now
                 currentBitrate = (currentBitrate * 1.15).toInt().coerceAtMost(targetBitrate)
@@ -209,6 +252,13 @@ class MainActivity : Activity() {
             "move" -> setMove(o.optInt("x"), o.optInt("y"))
             "stop" -> setMove(0, 0)
             "center" -> { setMove(0, 0); gimbal.send(GimbalBle.angle(0, 0, 0)) }
+            "gmode" -> {
+                // 1 = Pan/Tilt takip, 2 = Yatay takip, 3 = Tum eksenler kilitli, 4 = POV
+                val m = o.optInt("v", 1).coerceIn(1, 4)
+                gimbal.send(GimbalBle.wrap(3, byteArrayOf(0xAA.toByte(), 0x55, 0x00, 0x02, 0x25, 0x01, m.toByte())))
+                gimbalMode = m
+                main.post { sendStatus() }
+            }
             "raw" -> {
                 // Deneme icin: {"t":"raw","type":3,"hex":"AA55..."}
                 val hex = o.optString("hex").replace(" ", "")
@@ -236,6 +286,31 @@ class MainActivity : Activity() {
         }
     }
 
+    // Gimbal durum paketleri: ayni komut turunden en fazla 2/sn PC'ye gonder
+    private val lastNotify = HashMap<String, Long>()
+    // Gimbal durum paketi (komut 0x94): [pil seviyesi][durum]; durumda 0x08 biti = sarjda (olculdu: 0x02 pilde, 0x0b sarjda)
+    @Volatile private var gBattery = -1
+    @Volatile private var gCharging: Boolean? = null
+
+    private fun onGimbalNotify(v: ByteArray) {
+        val hex = v.joinToString("") { "%02x".format(it) }
+        val i = hex.indexOf("aa55000394")
+        if (i >= 0 && hex.length >= i + 14) {
+            val bat = hex.substring(i + 10, i + 12).toInt(16)
+            val charging = hex.substring(i + 12, i + 14).toInt(16) and 0x08 != 0
+            if (bat != gBattery || charging != gCharging) {
+                gBattery = bat; gCharging = charging
+                log("Gimbal pil: $bat${if (charging) " (sarjda)" else ""}")
+                main.post { sendStatus(); refreshStatus() }
+            }
+        }
+        val key = hex.take(12)
+        val now = System.currentTimeMillis()
+        if (now - (lastNotify[key] ?: 0) < 500) return
+        lastNotify[key] = now
+        control.broadcast(JSONObject().put("t", "gnotify").put("hex", hex))
+    }
+
     private fun sendStatus() {
         val s = camera.settings
         control.broadcast(
@@ -244,9 +319,12 @@ class MainActivity : Activity() {
                 .put("gimbal", gimbal.state)
                 .put("gimbalConnected", gimbal.connected)
                 .put("drops", gimbal.drops)
+                .put("gBattery", gBattery)
+                .put("gCharging", gCharging == true)
                 .put("dropReason", gimbal.lastDropStatus)
                 .put("camera", s.cameraId)
                 .put("rot", rotation)
+                .put("gmode", gimbalMode)
                 .put("front", camera.isFront())
                 .put("cameras", org.json.JSONArray(camera.cameraList()))
                 .put("w", s.width).put("h", s.height).put("fps", s.fps).put("bitrate", s.bitrate)

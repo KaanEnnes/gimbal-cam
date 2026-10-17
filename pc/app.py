@@ -17,13 +17,13 @@ from datetime import datetime
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, QSettings, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QKeyEvent, QPainter, QPen, QPixmap, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QIcon, QImage, QKeyEvent, QPainter, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMainWindow, QPushButton, QRadioButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget,
+    QLineEdit, QMainWindow, QPushButton, QSystemTrayIcon, QRadioButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
-from gimbalcam import FaceTracker, Phone, setup_usb
+from gimbalcam import AudioPlayer, FaceTracker, Phone, resource, setup_usb
 from room import QuickTunnel, RoomServer
 
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Videos", "GimbalCam")
@@ -317,6 +317,14 @@ class MainWindow(QMainWindow):
         self.note = ("", 0.0)
         self.room = None
         self.tunnel = None
+        self.player = AudioPlayer()
+        self.wake_wanted_at = 0.0     # sarjdayken biri kullanmak istedi
+        self.tilt_s = 0.0             # ufuk kilidi: yumusatilmis egiklik
+        self.last_tilt_push = 0.0
+        self.last_activity = time.time()
+        self.last_charge_hint = 0.0
+        self.was_charging = None
+        self._audio_phone = None
         self.room_last_frame = 0.0
         self.viewer_active_until = 0.0
         self.cal = None  # devam eden kalibrasyon
@@ -349,7 +357,9 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(panel)
-        scroll.setFixedWidth(340)
+        scroll.setFixedWidth(352)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        panel.setFixedWidth(336)
         h.addWidget(scroll)
 
         # Baglanti
@@ -402,10 +412,27 @@ class MainWindow(QMainWindow):
         hint.setObjectName("muted")
         hint.setAlignment(Qt.AlignCenter)
         lay.addWidget(hint)
-        labeled_slider(lay, "Hız", 100, 1500, self.speed, str, lambda v: setattr(self, "speed", v))
+        self.speed_slider = labeled_slider(lay, "Hız", 100, 1500, self.speed, str, lambda v: setattr(self, "speed", v))
         b = QPushButton("Ortala")
         b.clicked.connect(lambda: self.send(t="center"))
         lay.addWidget(b)
+        mrow = QHBoxLayout()
+        mrow.addWidget(QLabel("Mod"))
+        self.cb_mode = QComboBox()
+        for name in ("Takip (yatay + dikey)", "Yatay takip", "Kilitli (tüm eksenler)", "POV"):
+            self.cb_mode.addItem(name)
+        self.cb_mode.setToolTip("Gimbal'ın kendi çalışma modu. Kilitli: sapı çevirsen de kamera aynı yöne bakar.")
+        self.cb_mode.activated.connect(lambda i: self.send(t="gmode", v=i + 1))
+        mrow.addWidget(self.cb_mode, 1)
+        lay.addLayout(mrow)
+        self.batt = QLabel("Pil: -")
+        self.batt.setObjectName("muted")
+        lay.addWidget(self.batt)
+        self.chk_sleep = QCheckBox("Şarjdayken uyku (hareket etme)")
+        self.chk_sleep.setChecked(self.settings.value("sleep_guard", "true") == "true")
+        self.chk_sleep.setToolTip("Gimbal şarja takılıyken motorları zorlamaz; kullanmak için kabloyu çıkarman istenir")
+        self.chk_sleep.toggled.connect(lambda v: self.settings.setValue("sleep_guard", "true" if v else "false"))
+        lay.addWidget(self.chk_sleep)
         pv.addWidget(c)
 
         # Takip
@@ -436,7 +463,7 @@ class MainWindow(QMainWindow):
         g.addWidget(self.cb_res, 1, 1)
         lay.addLayout(g)
         self.zoom_slider = labeled_slider(lay, "Zoom", 100, 800, 100, lambda v: f"{v / 100:.1f}x", self.set_zoom)
-        labeled_slider(lay, "Pozlama", -12, 12, 0, lambda v: f"{v:+d}", lambda v: self.send(t="ev", v=v))
+        self.ev_slider = labeled_slider(lay, "Pozlama", -12, 12, 0, lambda v: f"{v:+d}", lambda v: self.send(t="ev", v=v))
         labeled_slider(lay, "Bit hızı", 1, 20, 6, lambda v: f"{v} Mbps", lambda v: self.send(t="bitrate", v=v * 1_000_000))
         row = QHBoxLayout()
         b = QPushButton("Otomatik odak")
@@ -447,6 +474,11 @@ class MainWindow(QMainWindow):
         self.btn_torch.toggled.connect(lambda on: self.send(t="torch", v=on))
         row.addWidget(self.btn_torch)
         lay.addLayout(row)
+        self.chk_horizon = QCheckBox("Ufuk kilidi (görüntüyü hep düz tut)")
+        self.chk_horizon.setChecked(self.settings.value("horizon", "false") == "true")
+        self.chk_horizon.setToolTip("Telefonun eğimini ölçüp görüntüyü ters yönde çevirir ve hafifçe kırpar")
+        self.chk_horizon.toggled.connect(lambda v: self.settings.setValue("horizon", "true" if v else "false"))
+        lay.addWidget(self.chk_horizon)
         b = QPushButton("⟳ Görüntüyü döndür")
         b.setToolTip("Otomatik döndürme yanlışsa 90° düzelt")
         b.clicked.connect(self.rotate_offset)
@@ -485,6 +517,14 @@ class MainWindow(QMainWindow):
 
         # Cikti
         c, lay = card("Çıktı")
+        row = QHBoxLayout()
+        self.btn_sound = QPushButton("🔊 Sesi PC'de çal")
+        self.btn_sound.setCheckable(True)
+        self.btn_sound.setToolTip("Telefon mikrofonunu bilgisayarın hoparlöründen çal (telefon yanındaysa yankı yapabilir)")
+        self.btn_sound.toggled.connect(self.toggle_sound)
+        row.addWidget(self.btn_sound)
+        lay.addLayout(row)
+        labeled_slider(lay, "Ses düzeyi", 0, 200, 100, lambda v: f"%{v}", lambda v: setattr(self.player, "volume", v / 100))
         self.btn_vcam = QPushButton("Sanal kamera")
         self.btn_vcam.setCheckable(True)
         self.btn_vcam.toggled.connect(lambda on: setattr(self, "want_vcam", on))
@@ -510,6 +550,11 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.loop)
         self.timer.start(16)
         self.setFocusPolicy(Qt.StrongFocus)
+        icon_path = resource("icon.png")
+        self.setWindowIcon(QIcon(icon_path))
+        self.tray = QSystemTrayIcon(QIcon(icon_path), self)
+        self.tray.setToolTip("GimbalCam")
+        self.tray.show()
         QTimer.singleShot(300, self.connect_phone)
 
     # ---------- baglanti ----------
@@ -577,6 +622,7 @@ class MainWindow(QMainWindow):
             port = self.room.start()
             self.tunnel = QuickTunnel(port)
             self.tunnel.start()
+            self._room_phone = None
             self.btn_room.setText("Odayı kapat")
             self.room_pass.setEnabled(False)
             self.room_code.setText("Oda açılıyor…")
@@ -585,6 +631,8 @@ class MainWindow(QMainWindow):
             if self.tunnel:
                 self.tunnel.stop()
             if self.room:
+                if self.phone and self.room.push_packet in self.phone.packet_listeners:
+                    self.phone.packet_listeners.remove(self.room.push_packet)
                 self.room.stop()
             self.room = self.tunnel = None
             self.btn_room.setText("Oda kur")
@@ -616,9 +664,29 @@ class MainWindow(QMainWindow):
             self.room_info.setText(
                 ("İzleyenler: " + ", ".join(names)) if names else "Oda açık. Henüz kimse bağlanmadı."
             )
-        r.set_info(tracking=self.tracking, rot=self.rot)
-        # Izleyici varsa ~15 fps JPEG gonder (genislik en fazla 960)
-        if r.viewers and self.frame is not None and now - self.room_last_frame >= 1 / 15:
+        # Telefon nesnesi degistiyse (yeniden baglanma) H.264 dinleyicisini tasi
+        if self.phone is not self._room_phone:
+            if self._room_phone and r.push_packet in self._room_phone.packet_listeners:
+                self._room_phone.packet_listeners.remove(r.push_packet)
+            if self.phone:
+                self.phone.packet_listeners.append(r.push_packet)
+            self._room_phone = self.phone
+        st = self.phone.status if self.phone else {}
+        r.set_info(
+            tracking=self.tracking, rot=self.rot, speed=self.speed, zoom=self.zoom,
+            ev=self.ev_slider.value(), torch=self.btn_torch.isChecked(),
+            camera=st.get("camera"), cameras=st.get("cameras", []), res=self.cb_res.currentIndex(),
+            resList=[self.cb_res.itemText(i) for i in range(self.cb_res.count())],
+            gimbal=st.get("gimbal", ""), calibrating=self.cal is not None,
+            gmode=self.cb_mode.currentIndex() + 1, horizon=self.chk_horizon.isChecked(),
+        )
+        for c in r.pop_commands():
+            self.remote_command(c)
+        if self.chk_horizon.isChecked() and now - self.last_tilt_push > 1 / 15:
+            self.last_tilt_push = now
+            r.push_tilt(self.tilt_s)
+        # JPEG yalnizca WebCodecs'i olmayan izleyiciler icin (~15 fps)
+        if r.wants_jpeg and self.frame is not None and now - self.room_last_frame >= 1 / 15:
             self.room_last_frame = now
             f = self.frame
             h, w = f.shape[:2]
@@ -629,10 +697,104 @@ class MainWindow(QMainWindow):
             if ok:
                 r.push_frame(buf.tobytes())
 
+    def remote_command(self, d):
+        """Odadaki izleyicinin komutu. Ayni arayuz elemanlari uzerinden uygulanir (PC ekrani da guncellenir)."""
+        c = d.get("c")
+
+        def num(k, lo, hi, default=0):
+            try:
+                return max(lo, min(hi, float(d.get(k, default))))
+            except (TypeError, ValueError):
+                return default
+
+        if c == "track":
+            self.btn_track.setChecked(bool(d.get("v")))
+        elif c == "center":
+            self.send(t="center")
+        elif c == "zoom":
+            self.zoom_slider.setValue(int(num("v", 1, 8, 1) * 100))
+        elif c == "ev":
+            self.ev_slider.setValue(int(num("v", -12, 12)))
+        elif c == "torch":
+            self.btn_torch.setChecked(bool(d.get("v")))
+        elif c == "autofocus":
+            self.send(t="autofocus")
+        elif c == "focus":
+            self.view.focus_mark = (num("x", 0, 1, .5), num("y", 0, 1, .5), time.time())
+            self.focus_click(num("x", 0, 1, .5), num("y", 0, 1, .5))
+        elif c == "camera":
+            i = self.cb_lens.findData(str(d.get("id")))
+            if i >= 0:
+                self.cb_lens.setCurrentIndex(i)
+                self.send(t="camera", id=self.cb_lens.itemData(i))
+        elif c == "res":
+            i = int(num("v", 0, self.cb_res.count() - 1))
+            self.cb_res.setCurrentIndex(i)
+            w, h, fps = self.cb_res.itemData(i)
+            self.send(t="res", w=w, h=h, fps=fps)
+        elif c == "speed":
+            self.speed_slider.setValue(int(num("v", 100, 1500, 800)))
+        elif c == "recal":
+            self.start_calibration(force=True)
+        elif c == "gmode":
+            i = int(num("v", 1, 4, 1))
+            self.cb_mode.setCurrentIndex(i - 1)
+            self.send(t="gmode", v=i)
+        elif c == "horizon":
+            self.chk_horizon.setChecked(bool(d.get("v")))
+        else:
+            return
+        self.set_note(f"{d.get('_from', 'Misafir')}: {c}")
+
     def open_pairing(self):
         from kablosuz_eslestir import PairWindow
         self.pair_win = PairWindow()
         self.pair_win.show()
+
+    def notify(self, title, text):
+        self.set_note(text)
+        try:
+            self.tray.showMessage(title, text, QSystemTrayIcon.Information, 6000)
+        except Exception:
+            pass
+
+    def charge_tick(self, now, charging, st):
+        bat = st.get("gBattery", -1)
+        if bat is None or bat < 0:
+            self.batt.setText("Pil: bilgi yok")
+        else:
+            lvl = max(0, min(4, int(bat)))
+            bars = "▮" * lvl + "▯" * (4 - lvl)
+            state = "⚡ şarjda" + (" · uyku" if self.chk_sleep.isChecked() else "") if charging else "pilde"
+            self.batt.setText(f"Pil: {bars}  ({state})")
+        if self.was_charging is True and not charging:
+            if now - self.wake_wanted_at < 120:
+                self.notify("Gimbal uyandı", "Şarj çıkarıldı, kontrol açık.")
+            self.wake_wanted_at = 0.0
+        self.was_charging = charging
+        # Uzun suredir kullanilmiyor ve pil dusukse sarja takmayi hatirlat (saatte bir)
+        if (not charging and bat is not None and 0 <= bat <= 1 and now - self.last_activity > 600
+                and now - self.last_charge_hint > 3600 and not (self.room and self.room.viewers)):
+            self.notify("Gimbal boşta", "Bir süredir kullanılmıyor ve pil düşük; şarja takabilirsin.")
+            self.last_charge_hint = now
+        if self.room:
+            self.room.set_info(gCharging=charging, gBattery=bat, sleeping=charging and self.chk_sleep.isChecked(),
+                               wakeWanted=now - self.wake_wanted_at < 30)
+
+    def toggle_sound(self, on):
+        if on and not self.player.start():
+            self.btn_sound.setChecked(False)
+            self.set_note("Ses çıkışı açılamadı.")
+        elif not on:
+            self.player.stop()
+
+    def _on_audio(self, pcm):
+        # Telefonun video is parcaciginda calisir
+        if self.btn_sound.isChecked():
+            self.player.feed(pcm)
+        r = self.room
+        if r:
+            r.push_audio(pcm)
 
     def set_note(self, text):
         self.note = (text, time.time())
@@ -797,6 +959,8 @@ class MainWindow(QMainWindow):
                 cid, facing = c.split(":")
                 self.cb_lens.addItem(f"{facing.capitalize()} kamera ({cid})", cid)
             self.cams_filled = True
+        if st.get("gmode") and not self.cb_mode.view().isVisible():
+            self.cb_mode.setCurrentIndex(int(st["gmode"]) - 1)
         if st.get("camera") is not None:
             i = self.cb_lens.findData(st.get("camera"))
             if i >= 0 and i != self.cb_lens.currentIndex():
@@ -815,10 +979,28 @@ class MainWindow(QMainWindow):
                 f0 = cv2.rotate(f0, cv2.ROTATE_180)
             elif self.rot == 270:
                 f0 = cv2.rotate(f0, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            if self.chk_horizon.isChecked():
+                # Telefonun egikligi kadar ters cevir; kose bosluklari gorunmesin diye hafif yakinlas
+                # Ivmeolcer gimbal titresimiyle oynar: guclu yumusatma + 1 derece olu bolge
+                self.tilt_s = 0.92 * self.tilt_s + 0.08 * (sign * ph.tilt)
+                a = max(-30.0, min(30.0, self.tilt_s))
+                if abs(a) > 1.0:
+                    h, w = f0.shape[:2]
+                    r = math.radians(abs(a))
+                    zoom = math.cos(r) + (max(w, h) / min(w, h)) * math.sin(r)
+                    M = cv2.getRotationMatrix2D((w / 2, h / 2), -a, zoom)
+                    f0 = cv2.warpAffine(f0, M, (w, h), flags=cv2.INTER_LINEAR)
+            else:
+                self.tilt_s = 0.0
             self.frame = f0
 
         # --- gimbal komutu ---
         now = time.time()
+        if ph is not self._audio_phone:
+            if self._audio_phone and self._on_audio in self._audio_phone.audio_listeners:
+                self._audio_phone.audio_listeners.remove(self._on_audio)
+            ph.audio_listeners.append(self._on_audio)
+            self._audio_phone = ph
         self.room_tick(now)
         key = (st.get("camera"), self.rot)
         amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
@@ -851,6 +1033,18 @@ class MainWindow(QMainWindow):
                 mx, my = self.last_cmd[0] or (0, 0)
             else:
                 mx = my = 0
+            # --- sarj korumasi (uyku) ---
+            charging = bool(st.get("gCharging"))
+            wants = manual or vmove is not None or (self.tracking and (mx or my))
+            if wants:
+                self.last_activity = now
+            if charging and self.chk_sleep.isChecked():
+                if wants and now - self.wake_wanted_at > 30:
+                    who = self.room.mover if (vmove is not None and self.room) else "Sen"
+                    self.notify("Gimbal şarjda", f"{who} gimbal'ı kullanmak istiyor. Pili korumak için şarj kablosunu çıkar.")
+                    self.wake_wanted_at = now
+                mx = my = 0
+            self.charge_tick(now, charging, st)
             cmd = (mx, my)
             if cmd != self.last_cmd[0] or (cmd != (0, 0) and now - self.last_cmd[1] > 0.1):
                 self.send(t="move", x=mx, y=my)
@@ -902,6 +1096,7 @@ class MainWindow(QMainWindow):
         self.tracker.dead = dead
 
     def closeEvent(self, e):
+        self.player.stop()
         if self.room:
             self.toggle_room(False)
         self.send(t="stop")

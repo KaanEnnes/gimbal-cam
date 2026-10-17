@@ -5,3 +5,4 @@ pyvirtualcam
 PySide6
 aiohttp
 qrcode[pil]
+sounddevice

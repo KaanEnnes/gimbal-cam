@@ -19,7 +19,7 @@ const val QUEUE_FRAMES = 8
 /**
  * Goruntu sunucusu. Her kare su sekilde gider:
  *   uzunluk(int32) | pts mikrosaniye(int64) | bayraklar(int8) | H.264 Annex-B verisi
- * Bayrak 2 = codec ayari (SPS/PPS), 1 = anahtar kare.
+ * Bayrak 2 = codec ayari (SPS/PPS), 1 = anahtar kare, 4 = ses (PCM 16 bit, 24 kHz, mono).
  */
 class VideoServer(
     private val log: (String) -> Unit,
@@ -27,7 +27,7 @@ class VideoServer(
     private val onCongestion: () -> Unit,
 ) {
     private class Client(val sock: Socket) {
-        val q = ArrayBlockingQueue<Triple<ByteArray, Long, Int>>(QUEUE_FRAMES)
+        val q = ArrayBlockingQueue<Triple<ByteArray, Long, Int>>(QUEUE_FRAMES * 3)
         @Volatile var needKey = true
         @Volatile var lastSentAt = System.currentTimeMillis()
     }
@@ -78,7 +78,8 @@ class VideoServer(
                 c.q.offer(Triple(cfg, pts, 2))
                 c.needKey = false
             }
-            if (!c.q.offer(Triple(data, pts, f))) {
+            // Kuyrukta ses de var: yalnizca goruntu birikimi ~8 kareyi asinca tikanma say
+            if (c.q.size >= QUEUE_FRAMES * 2 || !c.q.offer(Triple(data, pts, f))) {
                 c.q.clear()
                 c.needKey = true
                 if (System.currentTimeMillis() - c.lastSentAt > 3000) {
@@ -92,6 +93,13 @@ class VideoServer(
                 onCongestion()
                 onClient()
             }
+        }
+    }
+
+    fun pushAudio(data: ByteArray, pts: Long) {
+        for (c in clients) {
+            // Goruntu senkron olunca ses de akar; kuyruk doluysa ses parcasini at (gecikme biriktirme)
+            if (!c.needKey && c.q.remainingCapacity() > 0) c.q.offer(Triple(data, pts, 4))
         }
     }
 
