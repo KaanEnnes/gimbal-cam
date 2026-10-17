@@ -178,8 +178,9 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
             log("BLE durum: status=$status state=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 main.post { setState("servisler okunuyor") }
-                // Wi-Fi ile ayni anteni paylasiyoruz: yuksek oncelik baglantiyi saglamlastirir
-                g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                // Wi-Fi ile ayni 2.4 GHz anteni paylasiyoruz: yuksek oncelik (7.5 ms) Wi-Fi'nin havasini caliyor
+                // ve goruntu takiliyor. Gimbal komutlari icin dengeli aralik yeterli.
+                g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
                 g.requestMtu(185)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 if (writeChar != null) { drops++; lastDropStatus = status }

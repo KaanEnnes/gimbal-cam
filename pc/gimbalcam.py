@@ -29,6 +29,7 @@ import struct
 import subprocess
 import threading
 import time
+from collections import deque
 
 import av
 import cv2
@@ -111,6 +112,12 @@ class Phone:
         self.fps = 0.0
         self.status = {}
         self.tilt = 0.0  # ufuk kilidi: telefonun dortlu yonden kalan egikligi (derece)
+        # Akicilik tamponu: Wi-Fi gecikme dalgalanmasini gizlemek icin kareleri telefonun zamanlamasina gore
+        # sabit bir gecikmeyle goster. 0 = kapali (en dusuk gecikme).
+        self.jitter = 0.0
+        self._jbuf = deque(maxlen=90)       # (pts sn, kare)
+        self._jlock = threading.Lock()
+        self._arrivals = deque(maxlen=120)  # (varis - pts) gecmisi; en kucugu = en az gecikmis kare
         self.video_ok = False
         self.control_ok = False
         self._ctl = None
@@ -166,9 +173,15 @@ class Phone:
                             pass
                     for pkt in codec.parse(data):
                         for fr in codec.decode(pkt):
-                            self.frame = fr.to_ndarray(format="bgr24")
-                            self.frame_id += 1
+                            img = fr.to_ndarray(format="bgr24")
                             count += 1
+                            if self.jitter > 0 and pts > 0:
+                                with self._jlock:
+                                    self._jbuf.append((pts / 1e6, img))
+                                    self._arrivals.append(time.time() - pts / 1e6)
+                            else:
+                                self.frame = img
+                                self.frame_id += 1
                     if time.time() - t0 >= 1:
                         self.fps = count / (time.time() - t0)
                         count, t0 = 0, time.time()
@@ -177,6 +190,27 @@ class Phone:
                 if not self._stop:
                     print(f"Goruntu baglantisi bekleniyor... ({e})")
                     time.sleep(1.5)
+
+    def pump(self, now):
+        """Akicilik tamponu acikken zamani gelen son kareyi gosterime al (arayuz dongusunden cagrilir)."""
+        if self.jitter <= 0:
+            return
+        with self._jlock:
+            if not self._jbuf:
+                return
+            # Telefon saati ile bu bilgisayar saati arasindaki fark: en az gecikmis karenin farki
+            base = min(self._arrivals)
+            show = None
+            while self._jbuf and self._jbuf[0][0] + base + self.jitter <= now:
+                show = self._jbuf.popleft()[1]
+            # Tampon cok sistiyse (uzun kopma) yetis: en yeni kareye atla
+            if len(self._jbuf) > 45:
+                show = self._jbuf[-1][1]
+                self._jbuf.clear()
+                self._arrivals.clear()
+        if show is not None:
+            self.frame = show
+            self.frame_id += 1
 
     # ---- kontrol ----
     def _control_loop(self):

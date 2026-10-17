@@ -392,6 +392,11 @@ class MainWindow(QMainWindow):
         b.setToolTip("Kablosuz hata ayıklamayı QR koduyla eşleştir; kablo gerekmez")
         b.clicked.connect(self.open_pairing)
         lay.addWidget(b)
+        self.chk_smooth = QCheckBox("Akıcı görüntü (+0.2 sn gecikme)")
+        self.chk_smooth.setToolTip("Wi-Fi gecikme dalgalanmasından gelen takılmaları gizler. Kapalı: en düşük gecikme.")
+        self.chk_smooth.setChecked(self.settings.value("smooth", "true") == "true")
+        self.chk_smooth.toggled.connect(lambda v: self.settings.setValue("smooth", "true" if v else "false"))
+        lay.addWidget(self.chk_smooth)
         self.dot_video = Dot("Görüntü")
         self.dot_ctl = Dot("Kontrol")
         self.dot_gimbal = Dot("Gimbal")
@@ -967,6 +972,8 @@ class MainWindow(QMainWindow):
             if i >= 0 and i != self.cb_lens.currentIndex():
                 self.cb_lens.setCurrentIndex(i)
 
+        ph.jitter = 0.2 if self.chk_smooth.isChecked() else 0.0
+        ph.pump(time.time())
         new = ph.frame_id != self.shown_id and ph.frame is not None
         if new:
             self.shown_id = ph.frame_id
