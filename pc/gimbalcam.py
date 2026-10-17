@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import socket
 import struct
 import subprocess
@@ -188,48 +189,52 @@ class Phone:
                 self._ctl = None
 
 
+def resource(name):
+    """Paketlenmis exe'de ve kaynak klasorde dosya yolu."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
+
 class FaceTracker:
-    """Yuzu bulur ve onu ortada tutacak gimbal hizini hesaplar."""
+    """Yuzu bulur (YuNet; yoksa Haar) ve onu ortaya getirecek gorus hizini hesaplar.
+
+    Donus: (sag, yukari) istenen gorus hizi. Gimbal komutuna cevirme isini
+    kalibrasyon eslemesi yapar (bkz. app.py AxisMap)."""
 
     def __init__(self):
+        self.yunet = None
+        model = resource("face_detection_yunet_2023mar.onnx")
+        if os.path.exists(model):
+            try:
+                self.yunet = cv2.FaceDetectorYN.create(model, "", (320, 320), 0.6, 0.3, 20)
+            except Exception as e:
+                print(f"YuNet acilamadi, Haar kullaniliyor: {e}")
         self.det = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         self.box = None
         self.lost = 0
         self.sx = 0.0
         self.sy = 0.0
         self.dead = 0.08
-        # Eksen yonleri (+1/-1). Kameraya/yone gore degisir; takip sirasinda kendini ayarlar.
-        self.signs = {}
-        self.key = None
-        self._win = [None, None]  # eksen basina (baslangic zamani, baslangic hatasi)
 
-    def _learn(self, axis, err):
-        """Gimbal bir yone donerken yuz merkezden uzaklasiyorsa o eksenin yonunu cevir."""
-        now = time.time()
-        w = self._win[axis]
-        if abs(err) < 0.2:
-            self._win[axis] = None
-            return
-        if w is None or (w[1] > 0) != (err > 0):
-            self._win[axis] = (now, err)
-            return
-        if now - w[0] < 0.8:
-            return
-        if abs(err) > abs(w[1]) + 0.06:
-            sx, sy = self.signs.get(self.key, (1, 1))
-            self.signs[self.key] = (-sx, sy) if axis == 0 else (sx, -sy)
-            print(f"Takip yonu duzeltildi: {'yatay' if axis == 0 else 'dikey'} eksen ters ({self.key})")
-        self._win[axis] = (now, err)
-
-    def update(self, frame, max_speed, key=None):
-        self.key = key
+    def _detect(self, frame):
         h, w = frame.shape[:2]
-        scale = 320 / w
-        small = cv2.cvtColor(cv2.resize(frame, (320, int(h * scale))), cv2.COLOR_BGR2GRAY)
-        small = cv2.equalizeHist(small)
-        faces = self.det.detectMultiScale(small, scaleFactor=1.15, minNeighbors=5, minSize=(24, 24))
-        if len(faces):
-            faces = [tuple(int(v / scale) for v in f) for f in faces]
+        scale = 320 / max(w, h)
+        sw, sh = int(w * scale), int(h * scale)
+        small = cv2.resize(frame, (sw, sh))
+        if self.yunet is not None:
+            self.yunet.setInputSize((sw, sh))
+            _, faces = self.yunet.detect(small)
+            if faces is None:
+                return []
+            return [tuple(int(v / scale) for v in f[:4]) for f in faces]
+        gray = cv2.equalizeHist(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
+        faces = self.det.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=5, minSize=(20, 20))
+        return [tuple(int(v / scale) for v in f) for f in faces]
+
+    def update(self, frame, max_speed):
+        h, w = frame.shape[:2]
+        faces = self._detect(frame)
+        if faces:
             if self.box is not None:
                 px, py = self.box[0] + self.box[2] / 2, self.box[1] + self.box[3] / 2
                 self.box = min(faces, key=lambda f: (f[0] + f[2] / 2 - px) ** 2 + (f[1] + f[3] / 2 - py) ** 2)
@@ -245,14 +250,11 @@ class FaceTracker:
             self.sy *= 0.5
             return 0, 0
         x, y, bw, bh = self.box
-        ex = ((x + bw / 2) - w / 2) / (w / 2)  # -1..1, + = sagda
-        ey = (h / 2 - (y + bh / 2.5)) / (h / 2)  # + = yukarida (yuzu biraz ust tarafa koy)
+        ex = ((x + bw / 2) - w / 2) / (w / 2)  # -1..1, + = yuz sagda
+        ey = (h / 2 - (y + bh / 2.5)) / (h / 2)  # + = yuz yukarida (yuzu biraz ust tarafa koy)
         dead = self.dead
-        self._learn(0, ex)
-        self._learn(1, ey)
-        sgx, sgy = self.signs.get(self.key, (1, 1))
-        tx = 0 if abs(ex) < dead else ex * sgx
-        ty = 0 if abs(ey) < dead else ey * sgy
+        tx = 0 if abs(ex) < dead else ex
+        ty = 0 if abs(ey) < dead else ey
         # Yumusatma: ani hiz sicramalari olmasin
         self.sx = self.sx * 0.6 + tx * 0.4
         self.sy = self.sy * 0.6 + ty * 0.4

@@ -251,6 +251,43 @@ def labeled_slider(lay, title, lo, hi, val, fmt, on_change):
     return s
 
 
+class AxisMap:
+    """Gimbal komut eksenleri (x, y) ile goruntudeki yon (sag, yukari) arasindaki esleme.
+
+    Gimbal dikey moddayken veya on kamerada eksenler ters ya da yer degistirmis olabilir;
+    bu esleme kalibrasyonla (gimbal'i kisaca oynatip goruntunun kaymasini olcerek) bulunur."""
+
+    def __init__(self, h=("x", 1), v=("y", 1)):
+        self.h = h
+        self.v = v
+
+    def to_cmd(self, right, up):
+        c = {"x": 0.0, "y": 0.0}
+        c[self.h[0]] += right * self.h[1]
+        c[self.v[0]] += up * self.v[1]
+        return int(c["x"]), int(c["y"])
+
+
+def default_map(rot, front):
+    """Olculmus varsayilanlar (arka kamera). Gimbal dikey moddayken motor eksenleri yer degistirir:
+    dikeyde (90) yatay motor goruntuyu yukari, dikey motor sola kaydiriyor."""
+    if front:
+        return AxisMap(("x", 1), ("y", -1)) if rot in (0, 180) else AxisMap(("y", -1), ("x", -1))
+    return {
+        0: AxisMap(("x", 1), ("y", 1)),
+        90: AxisMap(("y", -1), ("x", 1)),
+        180: AxisMap(("x", -1), ("y", -1)),
+        270: AxisMap(("y", 1), ("x", -1)),
+    }.get(rot, AxisMap())
+
+
+def _cal_gray(frame):
+    h, w = frame.shape[:2]
+    sc = 320 / w
+    g = cv2.cvtColor(cv2.resize(frame, (320, int(h * sc))), cv2.COLOR_BGR2GRAY)
+    return np.float32(g), sc
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -274,6 +311,9 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("kaanai", "GimbalCam")
         self.rot_offset = int(self.settings.value("rot_offset", 0))
         self.rot = 0
+        self.maps = {}  # (kamera, yon) -> AxisMap
+        self.note = ("", 0.0)
+        self.cal = None  # devam eden kalibrasyon
         self._usb_result = None
 
         root = QWidget()
@@ -365,6 +405,10 @@ class MainWindow(QMainWindow):
         self.btn_track.toggled.connect(self.toggle_tracking)
         lay.addWidget(self.btn_track)
         labeled_slider(lay, "Ölü bölge", 2, 30, int(self.dead * 100), lambda v: f"%{v}", lambda v: setattr(self, "dead", v / 100))
+        b = QPushButton("Yönleri yeniden ölç")
+        b.setToolTip("Gimbal'ı kısaca sağa ve yukarı oynatıp görüntünün hangi yöne kaydığını ölçer")
+        b.clicked.connect(lambda: self.start_calibration(force=True))
+        lay.addWidget(b)
         pv.addWidget(c)
 
         # Kamera
@@ -483,6 +527,83 @@ class MainWindow(QMainWindow):
             x, y = 1 - y, x
         self.send(t="focus", x=x, y=y)
 
+    def set_note(self, text):
+        self.note = (text, time.time())
+
+    # ---------- eksen kalibrasyonu ----------
+    CAL_SPEED = 350
+
+    def start_calibration(self, force=False):
+        if self.phone is None or self.frame is None:
+            return
+        key = (self.phone.status.get("camera"), self.rot)
+        if force:
+            self.maps.pop(key, None)
+        self.cal = {"key": key, "axes": ["x", "y"], "res": {}, "step": "start", "t": 0.0}
+        self.set_note("Yönler ölçülüyor: gimbal kısaca sağa ve yukarı oynayacak…")
+
+    def step_calibration(self, now, new_frame):
+        c = self.cal
+        if not c["axes"]:
+            self.finish_calibration()
+            return
+        a = c["axes"][0]
+        step = c["step"]
+        if step == "start":
+            c["f0"], c["sc"] = _cal_gray(self.frame)
+            self.send(t="move", **{"x": self.CAL_SPEED if a == "x" else 0, "y": self.CAL_SPEED if a == "y" else 0})
+            c["step"], c["t"] = "moving", now
+        elif step == "moving":
+            if now - c["t"] >= 0.1:
+                # Telefon 500 ms komut gelmeyince durur; hareket boyunca tekrarla
+                self.send(t="move", **{"x": self.CAL_SPEED if a == "x" else 0, "y": self.CAL_SPEED if a == "y" else 0})
+            if now - c["t"] >= 0.35:
+                self.send(t="move", x=0, y=0)
+                c["step"], c["t"] = "settle", now
+        elif step == "settle":
+            if now - c["t"] >= 0.5 and new_frame:
+                f1, _ = _cal_gray(self.frame)
+                f0 = c["f0"]
+                if f1.shape == f0.shape:
+                    win = cv2.createHanningWindow((f0.shape[1], f0.shape[0]), cv2.CV_32F)
+                    (dx, dy), _ = cv2.phaseCorrelate(f0, f1, win)
+                    # Icerik sola kayiyorsa gorus saga donmustur
+                    c["res"][a] = (-dx, dy)
+                self.send(t="move", **{"x": -self.CAL_SPEED if a == "x" else 0, "y": -self.CAL_SPEED if a == "y" else 0})
+                c["step"], c["t"] = "back", now
+        elif step == "back":
+            if now - c["t"] >= 0.1:
+                self.send(t="move", **{"x": -self.CAL_SPEED if a == "x" else 0, "y": -self.CAL_SPEED if a == "y" else 0})
+            if now - c["t"] >= 0.35:
+                self.send(t="move", x=0, y=0)
+                c["step"], c["t"] = "rest", now
+        elif step == "rest":
+            if now - c["t"] >= 0.4:
+                c["axes"].pop(0)
+                c["step"] = "start"
+
+    def finish_calibration(self):
+        c, self.cal = self.cal, None
+        self.last_cmd = ((0, 0), time.time())
+        rx = c["res"].get("x")
+        ry = c["res"].get("y")
+        if not rx or not ry or max(abs(rx[0]), abs(rx[1])) < 3 or max(abs(ry[0]), abs(ry[1])) < 3:
+            self.maps[c["key"]] = AxisMap()
+            self.set_note("Yön ölçümü başarısız (görüntü kaymadı); varsayılan yönler kullanılıyor.")
+            return
+        sign = lambda v: 1 if v >= 0 else -1
+        # Hangi komut ekseni goruntude yatay hareket ettiriyor?
+        if abs(rx[0]) >= abs(ry[0]):
+            h, v = ("x", sign(rx[0])), ("y", sign(ry[1]))
+        else:
+            h, v = ("y", sign(ry[0])), ("x", sign(rx[1]))
+        self.maps[c["key"]] = AxisMap(h, v)
+        names = {"x": "yatay motor", "y": "dikey motor"}
+        self.set_note(
+            f"Yönler ölçüldü: sağ = {names[h[0]]} {'+' if h[1] > 0 else '−'}, yukarı = {names[v[0]]} {'+' if v[1] > 0 else '−'}"
+        )
+        print(f"Kalibrasyon {c['key']}: x->{rx} y->{ry} => h={h} v={v}")
+
     def toggle_tracking(self, on):
         self.tracking = on
         self.tracker.box = None
@@ -590,28 +711,34 @@ class MainWindow(QMainWindow):
 
         # --- gimbal komutu ---
         now = time.time()
-        jx, jy = self.joy.value()
-        kx = (1 if "R" in self.keys else 0) - (1 if "L" in self.keys else 0)
-        ky = (1 if "U" in self.keys else 0) - (1 if "D" in self.keys else 0)
-        manual = bool(jx or jy or kx or ky)
-        if manual:
-            mx = int((jx + kx) * self.speed)
-            my = int((jy + ky) * self.speed)
-        elif self.tracking and self.frame is not None and new:
-            self.tracker_dead(self.dead)
-            key = (st.get("camera"), self.rot)
-            if key not in self.tracker.signs:
-                # Baslangic tahmini: on kamerada dikey ters (telefon yukari egilince on kamera asagi bakar)
-                self.tracker.signs[key] = (1, -1 if st.get("front") else 1)
-            mx, my = self.tracker.update(self.frame, self.speed, key)
-        elif self.tracking:
-            mx, my = self.last_cmd[0] or (0, 0)
+        key = (st.get("camera"), self.rot)
+        amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
+        if self.cal is not None:
+            self.step_calibration(now, new)
+            return_after = True
         else:
-            mx = my = 0
-        cmd = (mx, my)
-        if cmd != self.last_cmd[0] or (cmd != (0, 0) and now - self.last_cmd[1] > 0.1):
-            self.send(t="move", x=mx, y=my)
-            self.last_cmd = (cmd, now)
+            return_after = False
+            jx, jy = self.joy.value()
+            kx = (1 if "R" in self.keys else 0) - (1 if "L" in self.keys else 0)
+            ky = (1 if "U" in self.keys else 0) - (1 if "D" in self.keys else 0)
+            manual = bool(jx or jy or kx or ky)
+            if manual:
+                mx, my = amap.to_cmd((jx + kx) * self.speed, (jy + ky) * self.speed)
+            elif self.tracking and key not in self.maps and self.frame is not None and ph.video_ok:
+                self.start_calibration()
+                mx = my = 0
+            elif self.tracking and self.frame is not None and new:
+                self.tracker.dead = self.dead
+                right, up = self.tracker.update(self.frame, self.speed)
+                mx, my = amap.to_cmd(right, up)
+            elif self.tracking:
+                mx, my = self.last_cmd[0] or (0, 0)
+            else:
+                mx = my = 0
+            cmd = (mx, my)
+            if cmd != self.last_cmd[0] or (cmd != (0, 0) and now - self.last_cmd[1] > 0.1):
+                self.send(t="move", x=mx, y=my)
+                self.last_cmd = (cmd, now)
 
         if not new:
             return
@@ -649,8 +776,10 @@ class MainWindow(QMainWindow):
             cv2.rectangle(disp, (x, y), (x + bw, y + bh), (90, 220, 120), 3)
         self.view.show_frame(disp)
         gs = st.get("gimbal", "?")
+        note = self.note[0] if time.time() - self.note[1] < 8 else ""
         self.statusbar.setText(
-            f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)}, sebep {st.get('dropReason', '-')})  ·  Takip: {'açık' if self.tracking else 'kapalı'}"
+            (note + "   ·   " if note else "")
+            + f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)})  ·  Takip: {'açık' if self.tracking else 'kapalı'}"
         )
 
     def tracker_dead(self, dead):
