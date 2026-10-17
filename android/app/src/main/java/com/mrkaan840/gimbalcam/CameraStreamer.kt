@@ -53,6 +53,10 @@ class CameraStreamer(
     private var torch = false
     private var afRegion: MeteringRectangle? = null
 
+    fun isFront() = try {
+        manager.getCameraCharacteristics(settings.cameraId).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+    } catch (_: Exception) { false }
+
     fun cameraList(): List<String> = manager.cameraIdList.map { id ->
         val c = manager.getCameraCharacteristics(id)
         val facing = when (c.get(CameraCharacteristics.LENS_FACING)) {

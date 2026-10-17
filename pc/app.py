@@ -272,6 +272,8 @@ class MainWindow(QMainWindow):
         self.cams_filled = False
         self.zoom = 1.0
         self.settings = QSettings("kaanai", "GimbalCam")
+        self.rot_offset = int(self.settings.value("rot_offset", 0))
+        self.rot = 0
         self._usb_result = None
 
         root = QWidget()
@@ -285,7 +287,7 @@ class MainWindow(QMainWindow):
         left = QVBoxLayout()
         self.view = VideoView()
         self.view.setText("Telefon bekleniyor…")
-        self.view.clicked.connect(lambda x, y: self.send(t="focus", x=x, y=y))
+        self.view.clicked.connect(self.focus_click)
         self.view.wheel.connect(lambda d: self.zoom_slider.setValue(self.zoom_slider.value() + d * 25))
         left.addWidget(self.view, 1)
         self.statusbar = QLabel("")
@@ -391,6 +393,10 @@ class MainWindow(QMainWindow):
         self.btn_torch.toggled.connect(lambda on: self.send(t="torch", v=on))
         row.addWidget(self.btn_torch)
         lay.addLayout(row)
+        b = QPushButton("⟳ Görüntüyü döndür")
+        b.setToolTip("Otomatik döndürme yanlışsa 90° düzelt")
+        b.clicked.connect(self.rotate_offset)
+        lay.addWidget(b)
         tip = QLabel("Görüntüye tıkla: odak  ·  Tekerlek: zoom")
         tip.setObjectName("muted")
         lay.addWidget(tip)
@@ -461,6 +467,21 @@ class MainWindow(QMainWindow):
     def set_zoom(self, v):
         self.zoom = v / 100
         self.send(t="zoom", v=self.zoom)
+
+    def rotate_offset(self):
+        self.rot_offset = (self.rot_offset + 90) % 360
+        self.settings.setValue("rot_offset", self.rot_offset)
+
+    def focus_click(self, x, y):
+        # Ekrandaki (donmus) noktayi kameranin kendi koordinatina cevir
+        r = self.rot
+        if r == 90:
+            x, y = y, 1 - x
+        elif r == 180:
+            x, y = 1 - x, 1 - y
+        elif r == 270:
+            x, y = 1 - y, x
+        self.send(t="focus", x=x, y=y)
 
     def toggle_tracking(self, on):
         self.tracking = on
@@ -555,7 +576,17 @@ class MainWindow(QMainWindow):
         new = ph.frame_id != self.shown_id and ph.frame is not None
         if new:
             self.shown_id = ph.frame_id
-            self.frame = ph.frame
+            # Telefon dikey/yan donunce goruntuyu duz tut (on kamerada yon ters)
+            sign = -1 if st.get("front") else 1
+            self.rot = (sign * int(st.get("rot", 0)) + self.rot_offset) % 360
+            f0 = ph.frame
+            if self.rot == 90:
+                f0 = cv2.rotate(f0, cv2.ROTATE_90_CLOCKWISE)
+            elif self.rot == 180:
+                f0 = cv2.rotate(f0, cv2.ROTATE_180)
+            elif self.rot == 270:
+                f0 = cv2.rotate(f0, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.frame = f0
 
         # --- gimbal komutu ---
         now = time.time()

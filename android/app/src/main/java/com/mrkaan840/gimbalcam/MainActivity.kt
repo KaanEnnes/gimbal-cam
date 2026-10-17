@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.OrientationEventListener
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -50,6 +51,27 @@ class MainActivity : Activity() {
     private var lastEncodedAt = 0L
     private var lastRestartAt = 0L
     private var wifiLock: WifiManager.WifiLock? = null
+
+    // Telefonun gercek yonu (gimbal dikey moda gecince degisir). Uygulama ekrani yatay kilitli;
+    // PC goruntuyu bu kadar saat yonunde dondurur.
+    @Volatile private var rotation = 0
+    private val orientation by lazy {
+        object : OrientationEventListener(this) {
+            override fun onOrientationChanged(deg: Int) {
+                if (deg == OrientationEventListener.ORIENTATION_UNKNOWN) return
+                // Yatay kilitli ekranin dogal yonu 270 derece; aradaki fark kadar donmus demektir
+                val rel = ((deg - 270) % 360 + 360) % 360
+                val snapped = ((rel + 45) / 90 % 4) * 90
+                // Histerezis: kose bolgelerinde (±20 derece) karar degistirme
+                val dist = kotlin.math.abs(((rel - snapped + 540) % 360) - 180)
+                if (snapped != rotation && dist > 160) {
+                    rotation = snapped
+                    log("Yon: $rotation derece")
+                    main.post { sendStatus() }
+                }
+            }
+        }
+    }
 
     // Uyarlanir bit hizi: ag yetismezse dusur, rahatlayinca hedefe dogru geri cik
     @Volatile private var targetBitrate = 6_000_000
@@ -114,6 +136,7 @@ class MainActivity : Activity() {
         wifiLock = getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "GimbalCam")
             .apply { setReferenceCounted(false); acquire() }
+        if (orientation.canDetectOrientation()) orientation.enable()
         currentBitrate = camera.settings.bitrate
         targetBitrate = camera.settings.bitrate
         video.start()
@@ -127,6 +150,7 @@ class MainActivity : Activity() {
         super.onDestroy()
         main.removeCallbacksAndMessages(null)
         try { wifiLock?.release() } catch (_: Exception) {}
+        orientation.disable()
         gimbal.stop()
         camera.stop()
         video.stop()
@@ -220,6 +244,8 @@ class MainActivity : Activity() {
                 .put("gimbal", gimbal.state)
                 .put("gimbalConnected", gimbal.connected)
                 .put("camera", s.cameraId)
+                .put("rot", rotation)
+                .put("front", camera.isFront())
                 .put("cameras", org.json.JSONArray(camera.cameraList()))
                 .put("w", s.width).put("h", s.height).put("fps", s.fps).put("bitrate", s.bitrate)
         )
