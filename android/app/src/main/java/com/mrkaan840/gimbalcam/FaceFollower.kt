@@ -48,7 +48,7 @@ class FaceFollower {
 
     /** Her kamera sonucunda cagrilir. Donus: gimbal hiz komutu (x, y) ya da null (takip kapali). */
     fun update(rawFaces: List<RectF>): Pair<Int, Int>? {
-        if (!enabled) { box = null; searching = false; return null }
+        if (!enabled) { box = null; searching = false; resetSearch(); return null }
         val now = System.currentTimeMillis()
         val faces = rawFaces.map { toUpright(it) }
         if (faces.isNotEmpty()) {
@@ -61,6 +61,7 @@ class FaceFollower {
         }
         val b = box ?: return toMotor(search(now))
         searching = false
+        resetSearch()
         val ex = (b.centerX() - 0.5) / 0.5                       // + = yuz sagda
         val ey = (0.5 - (b.top + b.height() / 2.5)) / 0.5        // + = yuz yukarida (yuzu biraz uste koy)
         lastE = Pair(ex, ey)
@@ -83,15 +84,60 @@ class FaceFollower {
         return toMotor(Pair(out[0], out[1]))
     }
 
-    /** Yuz kadrajdan cikti: son goruldugu tarafa kisa sure don (dikey kisa; uca dayanmasin). */
+    // ---- Arama ----
+    // Yuz kaybolunca sirayla: 1) son goruldugu yone, 2) ters yone (baslangici gecip diger tarafi da tara),
+    // 3) yukari-asagi tarama, 4) bulamazsa son gordugu aciya geri don ve bekle.
+    // Gimbal mutlak aci bildirmiyor: arama boyunca verilen hareketler toplanir (netX/netY, "hiz x saniye"),
+    // geri donuste tersine uygulanir.
+    private var phase = 0          // 0 yok, 1 yone, 2 ters, 3 dikey, 4 geri donus, 5 bitti
+    private var phaseAt = 0L
+    private var dir = 1.0
+    private var netX = 0.0
+    private var netY = 0.0
+    private var lastSearchAt = 0L
+
+    private fun resetSearch() { phase = 0; netX = 0.0; netY = 0.0 }
+
+    /** Elle kontrol / uyku: arama hareketleri uygulanmadi, geri donus hesabi bozulur -> aramayi birak. */
+    fun cancelSearch() { if (phase in 1..4) phase = 5 }
+
     private fun search(now: Long): Pair<Double, Double> {
-        searching = false
-        val e = lastE ?: return Pair(0.0, 0.0)
-        val gone = (now - lastSeen) / 1000.0
+        val e = lastE
+        if (e == null) { searching = false; return Pair(0.0, 0.0) }
+        if (phase == 0) {
+            phase = 1; phaseAt = now; netX = 0.0; netY = 0.0; lastSearchAt = now
+            dir = if (e.first >= 0) 1.0 else -1.0
+        }
+        val dt = ((now - lastSearchAt) / 1000.0).coerceIn(0.0, 0.2)
+        lastSearchAt = now
+        val inPhase = (now - phaseAt) / 1000.0
+        fun next(p: Int) { phase = p; phaseAt = now }
+        val H = 0.45; val V = 0.3
         var sx = 0.0; var sy = 0.0
-        if (gone < 3.0 && abs(e.first) > 0.2) sx = if (e.first > 0) 0.45 else -0.45
-        if (gone < 1.0 && abs(e.second) > 0.3) sy = if (e.second > 0) 0.3 else -0.3
-        searching = sx != 0.0 || sy != 0.0
+        when (phase) {
+            1 -> if (inPhase < 3.0) sx = H * dir else next(2)
+            2 -> if (inPhase < 6.0) sx = -H * dir else next(3)
+            3 -> when {
+                inPhase < 1.5 -> sy = V          // yukari
+                inPhase < 4.5 -> sy = -V         // asagi (ortayi gecip)
+                inPhase < 6.0 -> sy = V          // ortaya
+                else -> next(4)
+            }
+            4 -> {
+                // Son gordugu aciya don: toplanan hareketi tersine uygula
+                if (abs(netX) > 0.05) sx = if (netX > 0) -H else H
+                if (abs(netY) > 0.05) sy = if (netY > 0) -V else V
+                if (sx == 0.0 && sy == 0.0) next(5)
+            }
+        }
+        // Geri donuste hedefi asmamak icin son adimi kirp
+        if (phase == 4) {
+            if (sx != 0.0 && abs(sx * dt) > abs(netX)) sx = -netX / maxOf(dt, 0.01)
+            if (sy != 0.0 && abs(sy * dt) > abs(netY)) sy = -netY / maxOf(dt, 0.01)
+        }
+        netX += sx * dt
+        netY += sy * dt
+        searching = phase in 1..4
         return Pair(sx, sy)
     }
 

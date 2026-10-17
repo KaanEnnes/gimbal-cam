@@ -277,8 +277,8 @@ class MainActivity : Activity() {
             if (b != null) msg.put("box", org.json.JSONArray(listOf(b.left, b.top, b.right, b.bottom).map { (it * 1000).toInt() / 1000.0 }))
             control.broadcast(msg)
         }
-        if (now < manualUntil) return
-        if (sleepGuard && gCharging == true) { setMove(0, 0); return }
+        if (now < manualUntil) { follower.cancelSearch(); return }
+        if (sleepGuard && gCharging == true) { follower.cancelSearch(); setMove(0, 0); return }
         main.post { setMove(cmd.first, cmd.second) }
     }
 
