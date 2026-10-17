@@ -1,16 +1,16 @@
-﻿powershell : 201 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
-At line:1 char:302
-+ ... tch {} } }; powershell -ExecutionPolicy Bypass -File C:\Users\mrkaa\p ...
+﻿powershell : 165 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+At line:3 char:100
++ ... in 2>$null; powershell -ExecutionPolicy Bypass -File build_release.ps ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (201 INFO: PyIns...b hooks: 2026.8:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (165 INFO: PyIns...b hooks: 2026.8:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-201 INFO: Python: 3.12.10
-235 INFO: Platform: Windows-11-10.0.26300-SP0
-235 INFO: Python environment: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312
-236 INFO: wrote C:\Users\mrkaa\projects\gimbal-cam\pc\GimbalCam.spec
-242 INFO: Removing temporary files and cleaning cache in C:\Users\mrkaa\AppData\Local\pyinstaller
-250 INFO: Module search paths (PYTHONPATH):
+166 INFO: Python: 3.12.10
+194 INFO: Platform: Windows-11-10.0.26300-SP0
+194 INFO: Python environment: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312
+195 INFO: wrote C:\Users\mrkaa\projects\gimbal-cam\pc\GimbalCam.spec
+200 INFO: Removing temporary files and cleaning cache in C:\Users\mrkaa\AppData\Local\pyinstaller
+206 INFO: Module search paths (PYTHONPATH):
 ['C:\\Users\\mrkaa\\projects\\gimbal-cam\\pc',
  'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip',
  'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\DLLs',
@@ -22,181 +22,181 @@ At line:1 char:302
  'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\pythonwin',
  'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages',
  'C:\\Users\\mrkaa\\projects\\gimbal-cam\\pc']
-728 INFO: Appending 'binaries' from .spec
-728 INFO: Appending 'datas' from .spec
-728 INFO: checking Analysis
-728 INFO: Building Analysis because Analysis-00.toc is non existent
-728 INFO: Looking for Python shared library...
-730 INFO: Using Python shared library: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\python312.dll
-730 INFO: Running Analysis Analysis-00.toc
-730 INFO: Target bytecode optimization level: 0
-730 INFO: Initializing module dependency graph...
-731 INFO: Initializing module graph hook caches...
-761 INFO: Analyzing modules for base_library.zip ...
-2163 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
-\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-2580 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
-hon312\\Lib\\site-packages\\PyInstaller\\hooks'
-2729 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
+626 INFO: Appending 'binaries' from .spec
+627 INFO: Appending 'datas' from .spec
+627 INFO: checking Analysis
+627 INFO: Building Analysis because Analysis-00.toc is non existent
+627 INFO: Looking for Python shared library...
+627 INFO: Using Python shared library: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\python312.dll
+628 INFO: Running Analysis Analysis-00.toc
+628 INFO: Target bytecode optimization level: 0
+628 INFO: Initializing module dependency graph...
+630 INFO: Initializing module graph hook caches...
+647 INFO: Analyzing modules for base_library.zip ...
+1750 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
 thon312\\Lib\\site-packages\\PyInstaller\\hooks'
-3521 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
+1808 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+2924 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
+hon312\\Lib\\site-packages\\PyInstaller\\hooks'
+3138 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
 ython312\\Lib\\site-packages\\PyInstaller\\hooks'
-4639 INFO: Caching module dependency graph...
-4682 INFO: Analyzing C:\Users\mrkaa\projects\gimbal-cam\pc\app.py
-4730 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+4356 INFO: Caching module dependency graph...
+4394 INFO: Analyzing C:\Users\mrkaa\projects\gimbal-cam\pc\app.py
+4436 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
 on312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-5474 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
+4997 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
 thon312\\Lib\\site-packages\\PyInstaller\\hooks'
-5889 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\P
+5341 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\P
 rograms\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-5892 INFO: SetuptoolsInfo: initializing cached setuptools info...
-6934 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
+5343 INFO: SetuptoolsInfo: initializing cached setuptools info...
+6229 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
 ams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-7110 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+6345 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
 on312\\Lib\\site-packages\\PyInstaller\\hooks'
-7298 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+6513 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
 Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-7934 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\
+7007 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\
 \Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-8046 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+7101 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
 \\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-8193 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
+7238 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
 n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-9225 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+8134 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
 Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-9563 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
+8396 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
 ython312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-9864 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
+8635 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
 s\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-10208 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\
-\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-10418 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
-n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-10553 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
-s\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-13564 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
-Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-18685 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\P
-ython\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-46576 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
-s\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-51900 INFO: Processing standard module hook 'hook-av.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
-on312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-52651 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
-hon312\\Lib\\site-packages\\PyInstaller\\hooks'
-52964 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
-n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-53374 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pr
-ograms\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-53532 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\
-\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-53790 INFO: Processing standard module hook 'hook-sounddevice.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyt
-hon\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-54202 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
-\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\experimental\__init__.py:7: PydanticE
-xperimentalWarning: This module is experimental, its contents are subject to change and deprecation.
-  warnings.warn(
-55289 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
-\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-55321 INFO: Processing standard module hook 'hook-rich.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
-thon312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
-56051 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+8912 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+9087 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
 \\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-58390 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
-\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-58390 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vend
-or.backports'!
-58396 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyth
-on\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-58410 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
-\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-58437 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\P
-ython\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-58437 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.
-jaraco'!
-58448 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pro
-grams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-58449 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vend
-or.more_itertools'!
-58566 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
-thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-58632 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
-\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-58850 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\mrkaa\\AppData\\L
-ocal\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-58853 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\mrkaa\\AppData\\Local
-\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-59285 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
-thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-59285 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'
-!
-59712 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
-thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
-59712 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'
-!
-60344 INFO: Processing module hooks (post-graph stage)...
-61042 WARNING: Hidden import "tzdata" not found!
-61271 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pro
-grams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-63178 INFO: Performing binary vs. data reclassification (162 entries)
-63426 INFO: Looking for ctypes DLLs
-63470 INFO: Analyzing run-time hooks ...
-63476 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
-on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-63478 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
-on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-63481 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyth
-on\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-63483 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
-ython312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-63485 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
-on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
-63486 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
-ams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
-63491 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
+9204 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
+\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11420 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
 Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
-63515 INFO: Creating base_library.zip...
-63533 INFO: Looking for dynamic libraries
+15360 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\P
+ython\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+35009 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
+s\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+38470 INFO: Processing standard module hook 'hook-av.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+39038 INFO: Processing standard module hook 'hook-sounddevice.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyt
+hon\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+39391 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
 C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\experimental\__init__.py:7: PydanticE
 xperimentalWarning: This module is experimental, its contents are subject to change and deprecation.
   warnings.warn(
-65168 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pytho
+40208 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+40231 INFO: Processing standard module hook 'hook-rich.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
+thon312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+40801 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+42777 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
+\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+42777 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vend
+or.backports'!
+42783 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyth
+on\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+42794 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
+\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+42817 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\P
+ython\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+42817 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.
+jaraco'!
+42826 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pro
+grams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+42827 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vend
+or.more_itertools'!
+42953 INFO: Processing standard module hook 'hook-_osx_support.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
+thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+42969 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
+\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+43165 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\mrkaa\\AppData\\L
+ocal\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+43167 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\mrkaa\\AppData\\Local
+\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+43555 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
+thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+43556 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'
+!
+43893 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Py
+thon\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+43893 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'
+!
+44310 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
+hon312\\Lib\\site-packages\\PyInstaller\\hooks'
+44388 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
+n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+44762 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pr
+ograms\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+44883 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\
+\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+45133 INFO: Processing module hooks (post-graph stage)...
+45610 WARNING: Hidden import "tzdata" not found!
+45829 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pro
+grams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+47457 INFO: Performing binary vs. data reclassification (162 entries)
+47654 INFO: Looking for ctypes DLLs
+47689 INFO: Analyzing run-time hooks ...
+47694 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47696 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47698 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyth
+on\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47700 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
+ython312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47701 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47702 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
+ams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+47704 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
+Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+47723 INFO: Creating base_library.zip...
+47741 INFO: Looking for dynamic libraries
+C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\experimental\__init__.py:7: PydanticE
+xperimentalWarning: This module is experimental, its contents are subject to change and deprecation.
+  warnings.warn(
+49213 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pytho
 n312\\Lib\\site-packages\\shiboken6', 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\numpy.libs
 ', 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\av.libs', 'C:\\Users\\mrkaa\\App
 Data\\Roaming\\Python\\Python312\\site-packages\\cv2\\../../x64/vc17/bin']
-65168 INFO: Extra DLL search directories (PATH): ['C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages
+49213 INFO: Extra DLL search directories (PATH): ['C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages
 \\cv2\\../../x64/vc17/bin', 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PySide6
 ']
-68529 INFO: Warnings written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\warn-GimbalCam.txt
-68618 INFO: Graph cross-reference written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\xref-GimbalCam.html
-68654 INFO: checking PYZ
-68654 INFO: Building PYZ because PYZ-00.toc is non existent
-68654 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz
-69499 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz completed succe
+51948 INFO: Warnings written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\warn-GimbalCam.txt
+52022 INFO: Graph cross-reference written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\xref-GimbalCam.html
+52060 INFO: checking PYZ
+52060 INFO: Building PYZ because PYZ-00.toc is non existent
+52060 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz
+52902 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz completed succe
 ssfully.
-69522 INFO: checking PKG
-69523 INFO: Building PKG because PKG-00.toc is non existent
-69523 INFO: Building PKG (CArchive) GimbalCam.pkg
-69576 INFO: Building PKG (CArchive) GimbalCam.pkg completed successfully.
-69577 INFO: Bootloader C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyInstaller\bootloader\
+52925 INFO: checking PKG
+52925 INFO: Building PKG because PKG-00.toc is non existent
+52925 INFO: Building PKG (CArchive) GimbalCam.pkg
+52970 INFO: Building PKG (CArchive) GimbalCam.pkg completed successfully.
+52971 INFO: Bootloader C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyInstaller\bootloader\
 Windows-64bit-intel\runw.exe
-69577 INFO: checking EXE
-69577 INFO: Building EXE because EXE-00.toc is non existent
-69577 INFO: Building EXE from EXE-00.toc
-69578 INFO: Copying bootloader EXE to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\GimbalCam.exe
-69582 INFO: Copying icon to EXE
-69586 INFO: Copying 0 resources to EXE
-69586 INFO: Embedding manifest in EXE
-69588 INFO: Appending PKG archive to EXE
-69596 INFO: Fixing EXE headers
-69674 INFO: Building EXE from EXE-00.toc completed successfully.
-69679 INFO: checking COLLECT
-69679 INFO: Building COLLECT because COLLECT-00.toc is non existent
-69679 INFO: Removing dir C:\Users\mrkaa\projects\gimbal-cam\pc\dist\GimbalCam
-69794 INFO: Building COLLECT COLLECT-00.toc
-70705 INFO: Building COLLECT COLLECT-00.toc completed successfully.
-70712 INFO: Build complete! The results are available in: C:\Users\mrkaa\projects\gimbal-cam\pc\dist
+52971 INFO: checking EXE
+52971 INFO: Building EXE because EXE-00.toc is non existent
+52971 INFO: Building EXE from EXE-00.toc
+52971 INFO: Copying bootloader EXE to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\GimbalCam.exe
+52975 INFO: Copying icon to EXE
+52978 INFO: Copying 0 resources to EXE
+52978 INFO: Embedding manifest in EXE
+52980 INFO: Appending PKG archive to EXE
+52991 INFO: Fixing EXE headers
+53049 INFO: Building EXE from EXE-00.toc completed successfully.
+53053 INFO: checking COLLECT
+53053 INFO: Building COLLECT because COLLECT-00.toc is non existent
+53053 INFO: Removing dir C:\Users\mrkaa\projects\gimbal-cam\pc\dist\GimbalCam
+53133 INFO: Building COLLECT COLLECT-00.toc
+53860 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+53865 INFO: Build complete! The results are available in: C:\Users\mrkaa\projects\gimbal-cam\pc\dist
 [=========                              ] 25%                                   
 Name                     MB
 ----                     --

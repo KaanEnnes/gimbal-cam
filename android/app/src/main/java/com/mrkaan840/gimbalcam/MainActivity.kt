@@ -155,6 +155,7 @@ class MainActivity : Activity() {
 
     private fun askPermissions() {
         val perms = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) perms += Manifest.permission.POST_NOTIFICATIONS
         if (Build.VERSION.SDK_INT >= 31) {
             perms += Manifest.permission.BLUETOOTH_SCAN
             perms += Manifest.permission.BLUETOOTH_CONNECT
@@ -178,6 +179,9 @@ class MainActivity : Activity() {
         wifiLock = getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "GimbalCam")
             .apply { setReferenceCounted(false); acquire() }
+        // Ekran kapaninca da yayin surmesi icin on plan servisi (uygulama on plandayken baslatilmali)
+        try { startForegroundService(android.content.Intent(this, KeepAliveService::class.java)) }
+        catch (e: Exception) { log("Arka plan servisi baslatilamadi: ${e.message}") }
         if (orientation.canDetectOrientation()) orientation.enable()
         val sm = getSystemService(android.hardware.SensorManager::class.java)
         (sm.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) ?: sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER))
@@ -196,6 +200,7 @@ class MainActivity : Activity() {
         super.onDestroy()
         main.removeCallbacksAndMessages(null)
         try { wifiLock?.release() } catch (_: Exception) {}
+        stopService(android.content.Intent(this, KeepAliveService::class.java))
         orientation.disable()
         getSystemService(android.hardware.SensorManager::class.java).unregisterListener(gravityListener)
         gimbal.stop()
