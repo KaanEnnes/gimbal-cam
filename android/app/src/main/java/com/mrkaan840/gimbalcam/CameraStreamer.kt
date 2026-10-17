@@ -1,0 +1,262 @@
+package com.mrkaan840.gimbalcam
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Rect
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.MeteringRectangle
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Range
+import android.util.Size
+import android.view.Surface
+
+/**
+ * Camera2 ile kamerayi acar, goruntuyu hem ekrandaki onizlemeye hem de
+ * donanim H.264 kodlayicisina verir. Kodlanmis kareler [sink]'e gider.
+ */
+class CameraStreamer(
+    private val ctx: Context,
+    private val log: (String) -> Unit,
+    private val sink: (data: ByteArray, ptsUs: Long, flags: Int) -> Unit,
+) {
+    data class Settings(var cameraId: String = "0", var width: Int = 1280, var height: Int = 720, var fps: Int = 30, var bitrate: Int = 8_000_000)
+
+    val settings = Settings()
+    private val manager = ctx.getSystemService(CameraManager::class.java)
+    private val thread = HandlerThread("kamera").apply { start() }
+    private val handler = Handler(thread.looper)
+    private var device: CameraDevice? = null
+    private var session: CameraCaptureSession? = null
+    private var encoder: MediaCodec? = null
+    private var encoderSurface: Surface? = null
+    private var preview: Surface? = null
+    private var request: CaptureRequest.Builder? = null
+    @Volatile private var running = false
+    private var drainThread: Thread? = null
+
+    // Canli ayarlar
+    private var zoom = 1f
+    private var exposure = 0
+    private var torch = false
+    private var afRegion: MeteringRectangle? = null
+
+    fun cameraList(): List<String> = manager.cameraIdList.map { id ->
+        val c = manager.getCameraCharacteristics(id)
+        val facing = when (c.get(CameraCharacteristics.LENS_FACING)) {
+            CameraCharacteristics.LENS_FACING_FRONT -> "on"
+            CameraCharacteristics.LENS_FACING_BACK -> "arka"
+            else -> "harici"
+        }
+        "$id:$facing"
+    }
+
+    fun start(previewSurface: Surface?) {
+        preview = previewSurface
+        handler.post { openCamera() }
+    }
+
+    fun restart() {
+        handler.post {
+            closeAll()
+            openCamera()
+        }
+    }
+
+    fun stop() {
+        handler.post { closeAll() }
+    }
+
+    fun setPreview(s: Surface?) {
+        preview = s
+        restart()
+    }
+
+    private fun pickSize(c: CameraCharacteristics): Size {
+        val map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+        val sizes = map.getOutputSizes(MediaCodec::class.java) ?: map.getOutputSizes(Surface::class.java)
+        val want = settings.width * settings.height
+        return sizes.filter { it.width * 9 == it.height * 16 }.minByOrNull { kotlin.math.abs(it.width * it.height - want) }
+            ?: sizes.minBy { kotlin.math.abs(it.width * it.height - want) }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun openCamera() {
+        try {
+            val c = manager.getCameraCharacteristics(settings.cameraId)
+            val size = pickSize(c)
+            settings.width = size.width
+            settings.height = size.height
+            setupEncoder(size)
+            manager.openCamera(settings.cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(d: CameraDevice) {
+                    device = d
+                    createSession()
+                }
+                override fun onDisconnected(d: CameraDevice) { d.close(); device = null }
+                override fun onError(d: CameraDevice, error: Int) {
+                    log("Kamera hatasi: $error")
+                    d.close(); device = null
+                }
+            }, handler)
+        } catch (e: Exception) {
+            log("Kamera acilamadi: ${e.message}")
+        }
+    }
+
+    private fun setupEncoder(size: Size) {
+        val fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, size.width, size.height).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, settings.bitrate)
+            setInteger(MediaFormat.KEY_FRAME_RATE, settings.fps)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            // Dusuk gecikme: B-kare yok, gecikmeli cikti yok
+            setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+            setInteger(MediaFormat.KEY_PRIORITY, 0)
+        }
+        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        encoderSurface = enc.createInputSurface()
+        enc.start()
+        encoder = enc
+        running = true
+        drainThread = Thread({ drain(enc) }, "kodlayici").apply { start() }
+        log("Kodlayici: ${size.width}x${size.height} ${settings.fps}fps ${settings.bitrate / 1_000_000}Mbps")
+    }
+
+    private fun drain(enc: MediaCodec) {
+        val info = MediaCodec.BufferInfo()
+        while (running) {
+            val idx = try { enc.dequeueOutputBuffer(info, 10_000) } catch (_: Exception) { break }
+            if (idx < 0) continue
+            val buf = enc.getOutputBuffer(idx)
+            if (buf != null && info.size > 0) {
+                val out = ByteArray(info.size)
+                buf.position(info.offset)
+                buf.get(out)
+                sink(out, info.presentationTimeUs, info.flags)
+            }
+            try { enc.releaseOutputBuffer(idx, false) } catch (_: Exception) { break }
+        }
+    }
+
+    private fun createSession() {
+        val d = device ?: return
+        val targets = listOfNotNull(encoderSurface, preview)
+        @Suppress("DEPRECATION")
+        d.createCaptureSession(targets, object : CameraCaptureSession.StateCallback() {
+            override fun onConfigured(s: CameraCaptureSession) {
+                session = s
+                request = d.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                    targets.forEach { addTarget(it) }
+                    set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                    set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+                    set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(settings.fps, settings.fps))
+                    set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+                }
+                applyLive()
+                log("Kamera acik: ${settings.cameraId}")
+            }
+            override fun onConfigureFailed(s: CameraCaptureSession) { log("Kamera oturumu kurulamadi") }
+        }, handler)
+    }
+
+    private fun chars() = manager.getCameraCharacteristics(settings.cameraId)
+
+    private fun applyLive() {
+        val r = request ?: return
+        val s = session ?: return
+        val c = chars()
+        if (Build.VERSION.SDK_INT >= 30 && c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) != null) {
+            val range = c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)!!
+            r.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom.coerceIn(range.lower, range.upper))
+        } else {
+            val active = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)!!
+            val maxZ = c.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+            val z = zoom.coerceIn(1f, maxZ)
+            val w = (active.width() / z).toInt()
+            val h = (active.height() / z).toInt()
+            r.set(CaptureRequest.SCALER_CROP_REGION, Rect((active.width() - w) / 2, (active.height() - h) / 2, (active.width() + w) / 2, (active.height() + h) / 2))
+        }
+        val evRange = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
+        if (evRange != null) r.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, exposure.coerceIn(evRange.lower, evRange.upper))
+        r.set(CaptureRequest.FLASH_MODE, if (torch) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
+        afRegion?.let {
+            r.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(it))
+            r.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(it))
+        }
+        try { s.setRepeatingRequest(r.build(), null, handler) } catch (e: Exception) { log("Istek hatasi: ${e.message}") }
+    }
+
+    fun setZoom(z: Float) = handler.post { zoom = z; applyLive() }
+    fun setExposure(ev: Int) = handler.post { exposure = ev; applyLive() }
+    fun setTorch(on: Boolean) = handler.post { torch = on; applyLive() }
+
+    /** x,y: 0..1 goruntu koordinati. Oraya odaklan. */
+    fun focusAt(x: Float, y: Float) = handler.post {
+        val active = chars().get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return@post
+        val cx = (x.coerceIn(0f, 1f) * active.width()).toInt()
+        val cy = (y.coerceIn(0f, 1f) * active.height()).toInt()
+        val half = active.width() / 10
+        afRegion = MeteringRectangle(
+            (cx - half).coerceAtLeast(0), (cy - half).coerceAtLeast(0),
+            half * 2, half * 2, MeteringRectangle.METERING_WEIGHT_MAX - 1,
+        )
+        val r = request ?: return@post
+        r.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+        applyLive()
+        r.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
+        try { session?.capture(r.build(), null, handler) } catch (_: Exception) {}
+        r.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
+    }
+
+    fun autoFocus() = handler.post {
+        afRegion = null
+        request?.apply {
+            set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+            set(CaptureRequest.CONTROL_AF_REGIONS, null)
+            set(CaptureRequest.CONTROL_AE_REGIONS, null)
+        }
+        applyLive()
+    }
+
+    fun requestKeyFrame() {
+        try {
+            encoder?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })
+        } catch (_: Exception) {}
+    }
+
+    fun setBitrate(bps: Int) {
+        settings.bitrate = bps
+        try {
+            encoder?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, bps) })
+        } catch (_: Exception) {}
+    }
+
+    private fun closeAll() {
+        running = false
+        try { session?.close() } catch (_: Exception) {}
+        session = null
+        try { device?.close() } catch (_: Exception) {}
+        device = null
+        drainThread?.join(500)
+        drainThread = null
+        try { encoder?.stop() } catch (_: Exception) {}
+        try { encoder?.release() } catch (_: Exception) {}
+        encoder = null
+        encoderSurface?.release()
+        encoderSurface = null
+        request = null
+    }
+}
