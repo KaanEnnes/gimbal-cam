@@ -3,6 +3,9 @@ package com.mrkaan840.gimbalcam
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Rect
+import android.graphics.RectF
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -59,6 +62,41 @@ class CameraStreamer(
     private var exposure = 0
     private var torch = false
     private var afRegion: MeteringRectangle? = null
+
+    /** Donanimsal yuz algilama (telefonda takip icin). Kutular ham goruntude 0..1. */
+    @Volatile var faceDetect = false
+        set(v) { if (field != v) { field = v; safePost { applyLive() } } }
+    var onFaces: ((List<RectF>) -> Unit)? = null
+
+    private val resultCb = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(s: CameraCaptureSession, req: CaptureRequest, res: TotalCaptureResult) {
+            if (!faceDetect) return
+            val faces = res.get(CaptureResult.STATISTICS_FACES) ?: return
+            val c = chars()
+            val active = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+            // Gorunen bolge: zoom kirpmasi + akisin en-boy orani (sensor 4:3, akis 16:9 -> ust/alt kirpilir)
+            val region: Rect = res.get(CaptureResult.SCALER_CROP_REGION) ?: run {
+                val z = if (Build.VERSION.SDK_INT >= 30) res.get(CaptureResult.CONTROL_ZOOM_RATIO) ?: 1f else 1f
+                val w = (active.width() / z).toInt(); val h = (active.height() / z).toInt()
+                Rect((active.width() - w) / 2, (active.height() - h) / 2, (active.width() + w) / 2, (active.height() + h) / 2)
+            }
+            val aspect = settings.width.toFloat() / settings.height
+            var vl = region.left.toFloat(); var vt = region.top.toFloat()
+            var vw = region.width().toFloat(); var vh = region.height().toFloat()
+            if (vw / vh > aspect) { val nw = vh * aspect; vl += (vw - nw) / 2; vw = nw }
+            else { val nh = vw / aspect; vt += (vh - nh) / 2; vh = nh }
+            val out = faces.filter { it.score >= 30 }.map { f ->
+                val b = f.bounds
+                RectF((b.left - vl) / vw, (b.top - vt) / vh, (b.right - vl) / vw, (b.bottom - vt) / vh)
+            }
+            onFaces?.invoke(out)
+        }
+    }
+
+    fun faceDetectSupported() = try {
+        (chars().get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES) ?: intArrayOf())
+            .contains(CameraCharacteristics.STATISTICS_FACE_DETECT_MODE_SIMPLE)
+    } catch (_: Exception) { false }
 
     fun isFront() = try {
         manager.getCameraCharacteristics(settings.cameraId).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
@@ -241,7 +279,11 @@ class CameraStreamer(
             r.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(it))
             r.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(it))
         }
-        try { s.setRepeatingRequest(r.build(), null, handler) } catch (e: Exception) { log("Istek hatasi: ${e.message}") }
+        val fdModes = c.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES) ?: intArrayOf()
+        r.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE,
+            if (faceDetect && CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE in fdModes) CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE
+            else CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)
+        try { s.setRepeatingRequest(r.build(), resultCb, handler) } catch (e: Exception) { log("Istek hatasi: ${e.message}") }
     }
 
     fun setZoom(z: Float) = safePost { zoom = z; applyLive() }

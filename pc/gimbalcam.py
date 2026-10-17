@@ -117,6 +117,9 @@ class Phone:
         self.jitter = 0.0
         self.latest = None
         self.latest_id = 0
+        self.face_box = None
+        self.face_searching = False
+        self.face_at = 0.0
         self._jbuf = deque(maxlen=90)       # (pts sn, kare)
         self._jlock = threading.Lock()
         self._arrivals = deque(maxlen=120)  # (varis - pts) gecmisi; en kucugu = en az gecikmis kare
@@ -243,6 +246,11 @@ class Phone:
                             self.status = msg
                         elif msg.get("t") == "tilt":
                             self.tilt = float(msg.get("a", 0))
+                        elif msg.get("t") == "face":
+                            # Telefondaki takibin yuz kutusu (dik goruntude 0..1)
+                            self.face_box = msg.get("box")
+                            self.face_searching = bool(msg.get("searching"))
+                            self.face_at = time.time()
                     except ValueError:
                         pass
                 raise ConnectionError("kontrol kapandi")

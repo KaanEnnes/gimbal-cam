@@ -799,6 +799,19 @@ class MainWindow(QMainWindow):
             self.room.set_info(gCharging=charging, gBattery=bat, sleeping=charging and self.chk_sleep.isChecked(),
                                wakeWanted=now - self.wake_wanted_at < 30)
 
+    def phone_tracks(self, st):
+        return bool(st.get("faceDetect"))
+
+    def send_track_params(self, st):
+        """Takip telefondaysa ayarlari (olculmus eksen eslemesi, goruntu yonu, hiz) telefona bildir."""
+        if not self.phone_tracks(st):
+            return
+        key = (st.get("camera"), self.rot)
+        on = self.tracking and self.cal is None and key in self.maps
+        amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
+        self.send(t="track", on=on, rot=self.rot, h=amap.h[0], hs=amap.h[1], va=amap.v[0], vs=amap.v[1],
+                  speed=self.speed, dead=self.dead, sleep=self.chk_sleep.isChecked())
+
     def toggle_hevc(self, on):
         self.settings.setValue("hevc", "true" if on else "false")
         self.last_wants_sent = 0.0  # hemen telefona bildir
@@ -899,6 +912,7 @@ class MainWindow(QMainWindow):
     def toggle_tracking(self, on):
         self.tracking = on
         self.tracker.box = None
+        self.last_wants_sent = 0.0  # telefondaki takibe hemen bildir
         self.btn_track.setText("Takibi durdur" if on else "Takibi başlat")
 
     # ---------- kayit ----------
@@ -1034,6 +1048,7 @@ class MainWindow(QMainWindow):
             self.send(t="audio", v=want_audio)
             self.send(t="tilt", v=self.chk_horizon.isChecked())
             # HEVC yalnizca oda kapaliyken (odadaki tarayicilar H.264 istiyor)
+            self.send_track_params(st)
             want_hevc = self.chk_hevc.isChecked() and self.room is None
             self.send(t="codec", v="hevc" if want_hevc else "avc")
             if self.room:
@@ -1060,6 +1075,9 @@ class MainWindow(QMainWindow):
                 mx = my = 0
             elif self.tracking and key not in self.maps and self.frame is not None and ph.video_ok:
                 self.start_calibration()
+                mx = my = 0
+            elif self.tracking and self.phone_tracks(st):
+                # Takip telefonda (donanim yuz algilama, ag gecikmesi yok): PC hareket gondermez
                 mx = my = 0
             elif self.tracking and ph.latest is not None and ph.latest_id != getattr(self, "_track_seen", -1):
                 # Takip en taze kareyle calisir (ekrandaki akicilik tamponu ~0.2 sn geride; gecikme salinim yapar)
@@ -1125,7 +1143,13 @@ class MainWindow(QMainWindow):
 
         # --- ekran ---
         disp = f
-        if self.tracking and self.tracker.box is not None:
+        if self.tracking and self.phone_tracks(st):
+            fb = ph.face_box if time.time() - ph.face_at < 0.5 else None
+            if fb:
+                disp = f.copy()
+                fh2, fw2 = f.shape[:2]
+                cv2.rectangle(disp, (int(fb[0] * fw2), int(fb[1] * fh2)), (int(fb[2] * fw2), int(fb[3] * fh2)), (90, 220, 120), 3)
+        elif self.tracking and self.tracker.box is not None:
             disp = f.copy()
             x, y, bw, bh = self.tracker.box
             cv2.rectangle(disp, (x, y), (x + bw, y + bh), (90, 220, 120), 3)
@@ -1134,7 +1158,7 @@ class MainWindow(QMainWindow):
         note = self.note[0] if time.time() - self.note[1] < 8 else ""
         self.statusbar.setText(
             (note + "   ·   " if note else "")
-            + f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)})  ·  Takip: {('aranıyor…' if self.tracker.searching else 'açık') if self.tracking else 'kapalı'}"
+            + f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)})  ·  Takip: {('aranıyor…' if (ph.face_searching if self.phone_tracks(st) else self.tracker.searching) else ('açık · telefonda' if self.phone_tracks(st) else 'açık')) if self.tracking else 'kapalı'}"
         )
 
     def tracker_dead(self, dead):

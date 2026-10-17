@@ -39,6 +39,12 @@ class MainActivity : Activity() {
     private lateinit var video: VideoServer
     private lateinit var control: ControlServer
     private lateinit var audio: AudioCapture
+
+    // Telefonda yuz takibi (ag gecikmesi yok)
+    private val follower = FaceFollower()
+    @Volatile private var manualUntil = 0L      // PC/oda joystick'i oynatinca takip kisa sure bekler
+    @Volatile private var sleepGuard = true     // sarjdayken hareket etme
+    private var lastFaceSent = 0L
     private var started = false
 
     // Gimbal hiz durumu
@@ -148,6 +154,7 @@ class MainActivity : Activity() {
         camera = CameraStreamer(this, ::log) { d, pts, f -> video.push(d, pts, f) }
         control = ControlServer(::log, ::onCommand)
         audio = AudioCapture(::log) { d, pts -> video.pushAudio(d, pts) }
+        camera.onFaces = ::onFaces
 
         askPermissions()
         main.postDelayed(ticker, 100)
@@ -256,6 +263,22 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Kameranin donanimsal yuz algilamasi her karede (kamera is parcacigi). */
+    private fun onFaces(faces: List<android.graphics.RectF>) {
+        val cmd = follower.update(faces) ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastFaceSent > 100) {
+            lastFaceSent = now
+            val b = follower.box
+            val msg = JSONObject().put("t", "face").put("searching", follower.searching)
+            if (b != null) msg.put("box", org.json.JSONArray(listOf(b.left, b.top, b.right, b.bottom).map { (it * 1000).toInt() / 1000.0 }))
+            control.broadcast(msg)
+        }
+        if (now < manualUntil) return
+        if (sleepGuard && gCharging == true) { setMove(0, 0); return }
+        main.post { setMove(cmd.first, cmd.second) }
+    }
+
     private fun setMove(x: Int, y: Int) {
         val wasMoving = moveX != 0 || moveY != 0
         moveX = x; moveY = y
@@ -270,7 +293,24 @@ class MainActivity : Activity() {
     private fun onCommand(o: JSONObject) {
         when (o.optString("t")) {
             "hello" -> main.post { sendStatus() }
-            "move" -> setMove(o.optInt("x"), o.optInt("y"))
+            "move" -> {
+                val x = o.optInt("x"); val y = o.optInt("y")
+                // Elle kontrol her zaman oncelikli: takip 1 sn bekler
+                if (x != 0 || y != 0) manualUntil = System.currentTimeMillis() + 1000
+                if (follower.enabled && x == 0 && y == 0) return
+                setMove(x, y)
+            }
+            "track" -> {
+                follower.enabled = o.optBoolean("on")
+                follower.rot = o.optInt("rot", follower.rot)
+                follower.hAxis = o.optString("h", follower.hAxis); follower.hSign = o.optInt("hs", follower.hSign)
+                follower.vAxis = o.optString("va", follower.vAxis); follower.vSign = o.optInt("vs", follower.vSign)
+                follower.speed = o.optInt("speed", follower.speed).coerceIn(100, 1500)
+                follower.dead = o.optDouble("dead", follower.dead)
+                sleepGuard = o.optBoolean("sleep", sleepGuard)
+                camera.faceDetect = follower.enabled
+                if (!follower.enabled) setMove(0, 0)
+            }
             "stop" -> setMove(0, 0)
             "bye" -> { setMove(0, 0); audio.stop(); tiltWanted = false }
             "center" -> { setMove(0, 0); gimbal.send(GimbalBle.angle(0, 0, 0)) }
@@ -362,6 +402,8 @@ class MainActivity : Activity() {
                 .put("cameras", org.json.JSONArray(camera.cameraList()))
                 .put("w", s.width).put("h", s.height).put("fps", s.fps).put("bitrate", s.bitrate)
                 .put("codec", s.codec)
+                .put("faceDetect", camera.faceDetectSupported())
+                .put("phoneTracking", follower.enabled)
         )
     }
 
