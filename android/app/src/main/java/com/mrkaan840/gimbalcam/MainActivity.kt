@@ -288,6 +288,7 @@ class MainActivity : Activity() {
                 else if (!on) audio.stop()
             }
             "tilt" -> tiltWanted = o.optBoolean("v")
+            "keyframe" -> camera.requestKeyFrame()
             "zoom" -> camera.setZoom(o.optDouble("v", 1.0).toFloat())
             "focus" -> camera.focusAt(o.optDouble("x", 0.5).toFloat(), o.optDouble("y", 0.5).toFloat())
             "autofocus" -> camera.autoFocus()

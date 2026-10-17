@@ -45,6 +45,7 @@ class RoomServer:
         self.move = (0.0, 0.0, 0.0)  # (x, y, zaman)
         self.commands = []          # izleyicilerden gelen ozellik komutlari (Qt tarafi isler)
         self._h264_config = None
+        self.key_wanted = False     # bir izleyici anahtar kare bekliyor: PC telefondan hemen istesin
         self.mover = ""
         self.info = {}
         self._loop = None
@@ -245,11 +246,13 @@ class RoomServer:
             if v["mode"] != "h264" or ws.closed:
                 continue
             if v["busy"]:
-                # Ag yetismiyor: H.264'te kare atlanamaz, sonraki anahtar kareye kadar bekle
+                # Ag yetismiyor: H.264'te kare atlanamaz, anahtar kareye kadar bekle (PC hemen ister)
                 v["needKey"] = True
+                self.key_wanted = True
                 continue
             if v["needKey"]:
                 if not key or not self._h264_config:
+                    self.key_wanted = True
                     continue
                 v["needKey"] = False
             payload = (self._h264_config + data) if key and self._h264_config else data

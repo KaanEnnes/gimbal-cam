@@ -13,8 +13,12 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 const val VIDEO_PORT = 8686
 const val CONTROL_PORT = 8687
-/** Istemci basina en fazla bekleyen kare (~250 ms). Fazlasi gecikme demek. */
-const val QUEUE_FRAMES = 8
+/**
+ * Istemci basina tolerans (~0.5 sn goruntu). Asilinca kuyruk bosaltilip anahtar kare beklenir; bu telefonda
+ * istenen anahtar kare ~0.6 sn surdugu icin her tasma gorunur bir donma demek. Anlik yavaslamalari
+ * (Wi-Fi dalgalanmasi, PC'nin bir an mesgul olmasi) kare atlatmadan kisa bir gecikmeyle atlatmak daha iyi.
+ */
+const val QUEUE_FRAMES = 15
 
 /**
  * Goruntu sunucusu. Her kare su sekilde gider:

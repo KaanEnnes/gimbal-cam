@@ -688,6 +688,11 @@ class MainWindow(QMainWindow):
         )
         for c in r.pop_commands():
             self.remote_command(c)
+        # Izleyici kare kacirdiysa 3 sn'lik dogal anahtar kareyi bekletme: telefondan hemen iste (en fazla 1/sn)
+        if r.key_wanted and now - getattr(self, "_last_key_req", 0) > 1.0:
+            r.key_wanted = False
+            self._last_key_req = now
+            self.send(t="keyframe")
         if self.chk_horizon.isChecked() and now - self.last_tilt_push > 1 / 15:
             self.last_tilt_push = now
             r.push_tilt(self.tilt_s)
