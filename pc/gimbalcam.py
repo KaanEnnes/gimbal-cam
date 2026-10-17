@@ -47,8 +47,16 @@ def find_adb():
 
 
 def usb_devices(adb):
+    """adb'ye bagli cihazlar (USB ve kablosuz hata ayiklama). GimbalCam kurulu olanlar once gelir."""
     out = subprocess.run([adb, "devices"], capture_output=True, text=True).stdout
-    return [line.split()[0] for line in out.splitlines()[1:] if line.strip().endswith("device") and ":" not in line.split()[0]]
+    devs = [line.split()[0] for line in out.splitlines()[1:] if line.strip().endswith("device")]
+
+    def has_app(d):
+        r = subprocess.run([adb, "-s", d, "shell", "pm", "path", "com.mrkaan840.gimbalcam"], capture_output=True, text=True)
+        return "package:" in r.stdout
+
+    with_app = [d for d in devs if has_app(d)]
+    return with_app or devs
 
 
 def setup_usb(serial=None):
@@ -58,7 +66,8 @@ def setup_usb(serial=None):
     devs = usb_devices(adb)
     if not devs:
         return False
-    serial = serial or devs[0]
+    # Ayni telefon hem USB hem kablosuz bagliysa USB'yi tercih et
+    serial = serial or sorted(devs, key=lambda d: ("." in d or ":" in d))[0]
     for port in (VIDEO_PORT, CONTROL_PORT):
         subprocess.run([adb, "-s", serial, "forward", f"tcp:{port}", f"tcp:{port}"], capture_output=True)
     # Uygulama kapaliysa ac
