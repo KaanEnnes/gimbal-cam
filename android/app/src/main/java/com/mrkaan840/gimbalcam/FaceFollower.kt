@@ -74,8 +74,9 @@ class FaceFollower {
             if (active[i] && abs(e) < dead) active[i] = false
             else if (!active[i] && abs(e) > dead * 1.8) active[i] = true
             // Turev: merkeze hizla yaklasirken fren (asmayi onler)
-            de[i] = 0.6 * de[i] + 0.4 * ((e - pe[i]) / dt)
+            de[i] = (0.6 * de[i] + 0.4 * ((e - pe[i]) / dt)).coerceIn(-5.0, 5.0)
             pe[i] = e
+            lastV[i] = de[i]
             if (!active[i]) { out[i] = 0.0; continue }
             var u = 0.75 * e + 0.12 * de[i]
             if (u * e < 0) u = 0.0
@@ -90,6 +91,8 @@ class FaceFollower {
     // Gimbal mutlak aci bildirmiyor: arama boyunca verilen hareketler toplanir (netX/netY, "hiz x saniye"),
     // geri donuste tersine uygulanir.
     private var phase = 0          // 0 yok, 1 yone, 2 ters, 3 dikey, 4 geri donus, 5 bitti
+    private val lastV = doubleArrayOf(0.0, 0.0)   // yuzun son hareket hizi (kayboldugu yon)
+    private var vDir = 0.0
     private var phaseAt = 0L
     private var dir = 1.0
     private var netX = 0.0
@@ -106,7 +109,11 @@ class FaceFollower {
         if (e == null) { searching = false; return Pair(0.0, 0.0) }
         if (phase == 0) {
             phase = 1; phaseAt = now; netX = 0.0; netY = 0.0; lastSearchAt = now
-            dir = if (e.first >= 0) 1.0 else -1.0
+            // Son goruldugu yon: konum + hareket yonu (kenara varmadan kaybolduysa hareket belirler)
+            val hx = e.first + 0.35 * lastV[0]
+            val hy = e.second + 0.35 * lastV[1]
+            dir = if (hx >= 0) 1.0 else -1.0
+            vDir = if (abs(hy) > 0.3) (if (hy > 0) 1.0 else -1.0) else 0.0
         }
         val dt = ((now - lastSearchAt) / 1000.0).coerceIn(0.0, 0.2)
         lastSearchAt = now
@@ -115,7 +122,11 @@ class FaceFollower {
         val H = 0.45; val V = 0.3
         var sx = 0.0; var sy = 0.0
         when (phase) {
-            1 -> if (inPhase < 3.0) sx = H * dir else next(2)
+            1 -> if (inPhase < 3.0) {
+                sx = H * dir
+                // Yukari/asagi ciktiysa ilk 1 sn o yone de bak (uca dayanmasin diye kisa)
+                if (inPhase < 1.0) sy = V * vDir
+            } else next(2)
             2 -> if (inPhase < 6.0) sx = -H * dir else next(3)
             3 -> when {
                 inPhase < 1.5 -> sy = V          // yukari
