@@ -49,6 +49,22 @@ class MainActivity : Activity() {
     private var lastEncoded = -1L
     private var lastEncodedAt = 0L
     private var lastRestartAt = 0L
+    private var wifiLock: WifiManager.WifiLock? = null
+
+    // Uyarlanir bit hizi: ag yetismezse dusur, rahatlayinca hedefe dogru geri cik
+    @Volatile private var targetBitrate = 6_000_000
+    @Volatile private var currentBitrate = 6_000_000
+    @Volatile private var lastCongestionAt = 0L
+    private var lastRaiseAt = 0L
+
+    private fun onCongestion() {
+        val now = System.currentTimeMillis()
+        if (now - lastCongestionAt < 1000) return
+        lastCongestionAt = now
+        currentBitrate = (currentBitrate * 0.7).toInt().coerceAtLeast(1_000_000)
+        camera.setBitrate(currentBitrate)
+        log("Ag yavas: bit hizi ${currentBitrate / 100_000 / 10.0} Mbps")
+    }
 
     private fun log(s: String) {
         android.util.Log.i("GimbalCam", s)
@@ -66,7 +82,7 @@ class MainActivity : Activity() {
         buildUi()
 
         gimbal = GimbalBle(this, ::log).also { it.onState = { main.post { refreshStatus(); sendStatus() } } }
-        video = VideoServer(::log) { camera.requestKeyFrame() }
+        video = VideoServer(::log, { camera.requestKeyFrame() }, ::onCongestion)
         camera = CameraStreamer(this, ::log) { d, pts, f -> video.push(d, pts, f) }
         control = ControlServer(::log, ::onCommand)
 
@@ -94,6 +110,12 @@ class MainActivity : Activity() {
     private fun startAll() {
         if (started) return
         started = true
+        // Wi-Fi guc tasarrufu paketleri geciktirir: dusuk gecikme kilidi al
+        wifiLock = getSystemService(WifiManager::class.java)
+            .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "GimbalCam")
+            .apply { setReferenceCounted(false); acquire() }
+        currentBitrate = camera.settings.bitrate
+        targetBitrate = camera.settings.bitrate
         video.start()
         control.start()
         gimbal.start()
@@ -104,6 +126,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         main.removeCallbacksAndMessages(null)
+        try { wifiLock?.release() } catch (_: Exception) {}
         gimbal.stop()
         camera.stop()
         video.stop()
@@ -117,6 +140,11 @@ class MainActivity : Activity() {
             val now = System.currentTimeMillis()
             if (localHeld) lastMoveAt = now
             if (now - lastStatusAt > 2000) { lastStatusAt = now; sendStatus(); refreshStatus() }
+            if (currentBitrate < targetBitrate && now - lastCongestionAt > 5000 && now - lastRaiseAt > 3000) {
+                lastRaiseAt = now
+                currentBitrate = (currentBitrate * 1.15).toInt().coerceAtMost(targetBitrate)
+                camera.setBitrate(currentBitrate)
+            }
             // Kamera bekcisi: kare uretimi durduysa (baska uygulama kamerayi aldiysa vb.) yeniden baslat
             if (started) {
                 val enc = camera.encoded
@@ -168,7 +196,11 @@ class MainActivity : Activity() {
             "autofocus" -> camera.autoFocus()
             "ev" -> camera.setExposure(o.optInt("v"))
             "torch" -> camera.setTorch(o.optBoolean("v"))
-            "bitrate" -> camera.setBitrate(o.optInt("v", 8_000_000))
+            "bitrate" -> {
+                targetBitrate = o.optInt("v", 6_000_000)
+                currentBitrate = targetBitrate
+                camera.setBitrate(targetBitrate)
+            }
             "camera" -> { camera.settings.cameraId = o.optString("id", "0"); camera.restart(); main.postDelayed({ sendStatus() }, 800) }
             "res" -> {
                 camera.settings.width = o.optInt("w", 1280)

@@ -29,7 +29,7 @@ class CameraStreamer(
     private val log: (String) -> Unit,
     private val sink: (data: ByteArray, ptsUs: Long, flags: Int) -> Unit,
 ) {
-    data class Settings(var cameraId: String = "0", var width: Int = 1280, var height: Int = 720, var fps: Int = 30, var bitrate: Int = 8_000_000)
+    data class Settings(var cameraId: String = "0", var width: Int = 1280, var height: Int = 720, var fps: Int = 30, var bitrate: Int = 6_000_000)
 
     val settings = Settings()
     private val manager = ctx.getSystemService(CameraManager::class.java)

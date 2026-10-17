@@ -21,6 +21,7 @@ Tuslar:
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import struct
@@ -46,13 +47,21 @@ def find_adb():
     return local if os.path.exists(local) else None
 
 
+def run(cmd, timeout=6):
+    """adb cagrisi; adb takilirsa (kablosuz baglanti offline) uygulama donmasin."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+
 def usb_devices(adb):
     """adb'ye bagli cihazlar (USB ve kablosuz hata ayiklama). GimbalCam kurulu olanlar once gelir."""
-    out = subprocess.run([adb, "devices"], capture_output=True, text=True).stdout
+    out = run([adb, "devices"]).stdout
     devs = [line.split()[0] for line in out.splitlines()[1:] if line.strip().endswith("device")]
 
     def has_app(d):
-        r = subprocess.run([adb, "-s", d, "shell", "pm", "path", "com.mrkaan840.gimbalcam"], capture_output=True, text=True)
+        r = run([adb, "-s", d, "shell", "pm", "path", "com.mrkaan840.gimbalcam"])
         return "package:" in r.stdout
 
     with_app = [d for d in devs if has_app(d)]
@@ -68,12 +77,20 @@ def setup_usb(serial=None):
         return False
     # Ayni telefon hem USB hem kablosuz bagliysa USB'yi tercih et
     serial = serial or sorted(devs, key=lambda d: ("." in d or ":" in d))[0]
-    for port in (VIDEO_PORT, CONTROL_PORT):
-        subprocess.run([adb, "-s", serial, "forward", f"tcp:{port}", f"tcp:{port}"], capture_output=True)
     # Uygulama kapaliysa ac
-    subprocess.run([adb, "-s", serial, "shell", "am", "start", "-n", "com.mrkaan840.gimbalcam/.MainActivity"], capture_output=True)
+    run([adb, "-s", serial, "shell", "am", "start", "-n", "com.mrkaan840.gimbalcam/.MainActivity"])
+    m = re.match(r"^(\d+\.\d+\.\d+\.\d+):\d+$", serial)
+    if not m and "_adb-tls-connect" in serial:
+        out = run([adb, "-s", serial, "shell", "ip", "-4", "addr", "show", "wlan0"]).stdout
+        m = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", out)
+    if m:
+        # Kablosuz adb: goruntuyu adb tuneli yerine dogrudan Wi-Fi'den al (daha az gecikme)
+        print(f"Kablosuz baglanti: {m.group(1)}")
+        return m.group(1)
+    for port in (VIDEO_PORT, CONTROL_PORT):
+        run([adb, "-s", serial, "forward", f"tcp:{port}", f"tcp:{port}"])
     print(f"USB baglantisi: {serial}")
-    return True
+    return "127.0.0.1"
 
 
 class Phone:
@@ -111,9 +128,11 @@ class Phone:
             try:
                 s = socket.create_connection((self.host, VIDEO_PORT), timeout=5)
                 s.settimeout(10)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 256 * 1024)  # buyuk tampon = gecikme
                 codec = av.CodecContext.create("h264", "r")
                 codec.options = {"flags": "low_delay", "flags2": "fast"}
+                # Kare-iş parçacığı kod çözme her iş parçacığı için bir kare gecikme ekler
+                codec.thread_type = "SLICE"
                 self.video_ok = True
                 count, t0 = 0, time.time()
                 while not self._stop:
@@ -223,10 +242,10 @@ def main():
 
     host = args.host
     if not host:
-        if not setup_usb(args.serial):
+        host = setup_usb(args.serial)
+        if not host:
             print("USB ile telefon bulunamadi. Wi-Fi icin: python gimbalcam.py --host <telefon IP>")
             return
-        host = "127.0.0.1"
 
     phone = Phone(host)
     tracker = FaceTracker()

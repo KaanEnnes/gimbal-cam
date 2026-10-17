@@ -10,12 +10,13 @@ olarak verir, kayit ve fotograf alir.
 import math
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QKeyEvent, QPainter, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
@@ -270,6 +271,8 @@ class MainWindow(QMainWindow):
         self.rec_start = 0.0
         self.cams_filled = False
         self.zoom = 1.0
+        self.settings = QSettings("kaanai", "GimbalCam")
+        self._usb_result = None
 
         root = QWidget()
         root.setObjectName("root")
@@ -318,6 +321,9 @@ class MainWindow(QMainWindow):
         self.ip.setPlaceholderText("Telefon IP (ör. 192.168.1.6)")
         self.ip.setEnabled(False)
         self.rb_wifi.toggled.connect(self.ip.setEnabled)
+        self.ip.setText(self.settings.value("ip", ""))
+        if self.settings.value("mode", "usb") == "wifi":
+            self.rb_wifi.setChecked(True)
         lay.addWidget(self.ip)
         self.btn_connect = QPushButton("Bağlan")
         self.btn_connect.setObjectName("primary")
@@ -375,7 +381,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(g)
         self.zoom_slider = labeled_slider(lay, "Zoom", 100, 800, 100, lambda v: f"{v / 100:.1f}x", self.set_zoom)
         labeled_slider(lay, "Pozlama", -12, 12, 0, lambda v: f"{v:+d}", lambda v: self.send(t="ev", v=v))
-        labeled_slider(lay, "Bit hızı", 2, 20, 8, lambda v: f"{v} Mbps", lambda v: self.send(t="bitrate", v=v * 1_000_000))
+        labeled_slider(lay, "Bit hızı", 1, 20, 6, lambda v: f"{v} Mbps", lambda v: self.send(t="bitrate", v=v * 1_000_000))
         row = QHBoxLayout()
         b = QPushButton("Otomatik odak")
         b.clicked.connect(lambda: self.send(t="autofocus"))
@@ -424,16 +430,26 @@ class MainWindow(QMainWindow):
         if self.phone:
             self.phone.close()
             self.phone = None
+        self.settings.setValue("mode", "wifi" if self.rb_wifi.isChecked() else "usb")
         if self.rb_wifi.isChecked():
             host = self.ip.text().strip()
             if not host:
                 self.statusbar.setText("Wi-Fi için telefonun IP adresini yaz (telefon ekranının sol üstünde).")
                 return
+            self.settings.setValue("ip", host)
+            self._start_phone(host)
         else:
-            if not setup_usb():
-                self.statusbar.setText("USB ile telefon bulunamadı. Kabloyu ve USB hata ayıklamayı kontrol et, ya da Wi-Fi seç.")
-                return
-            host = "127.0.0.1"
+            # adb yavas/takili olabilir: arayuz donmasin diye arka planda bul
+            self.statusbar.setText("Telefon aranıyor (adb)…")
+            self.btn_connect.setEnabled(False)
+            self._usb_result = None
+
+            def work():
+                self._usb_result = setup_usb() or ""
+
+            threading.Thread(target=work, daemon=True).start()
+
+    def _start_phone(self, host):
         self.phone = Phone(host)
         self.cams_filled = False
         self.statusbar.setText(f"Bağlanılıyor: {host}")
@@ -507,6 +523,13 @@ class MainWindow(QMainWindow):
         for d in (self.dot_video, self.dot_ctl, self.dot_gimbal):
             d.tick()
         self.joy.tick()
+        if self._usb_result is not None:
+            host, self._usb_result = self._usb_result, None
+            self.btn_connect.setEnabled(True)
+            if host:
+                self._start_phone(host)
+            else:
+                self.statusbar.setText("USB/kablosuz adb ile telefon bulunamadı. Wi-Fi seçip telefonun IP'sini yaz.")
         ph = self.phone
         if ph is None:
             for d in (self.dot_video, self.dot_ctl, self.dot_gimbal):

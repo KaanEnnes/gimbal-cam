@@ -13,16 +13,23 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 const val VIDEO_PORT = 8686
 const val CONTROL_PORT = 8687
+/** Istemci basina en fazla bekleyen kare (~250 ms). Fazlasi gecikme demek. */
+const val QUEUE_FRAMES = 8
 
 /**
  * Goruntu sunucusu. Her kare su sekilde gider:
  *   uzunluk(int32) | pts mikrosaniye(int64) | bayraklar(int8) | H.264 Annex-B verisi
  * Bayrak 2 = codec ayari (SPS/PPS), 1 = anahtar kare.
  */
-class VideoServer(private val log: (String) -> Unit, private val onClient: () -> Unit) {
+class VideoServer(
+    private val log: (String) -> Unit,
+    private val onClient: () -> Unit,
+    private val onCongestion: () -> Unit,
+) {
     private class Client(val sock: Socket) {
-        val q = ArrayBlockingQueue<Triple<ByteArray, Long, Int>>(90)
+        val q = ArrayBlockingQueue<Triple<ByteArray, Long, Int>>(QUEUE_FRAMES)
         @Volatile var needKey = true
+        @Volatile var lastSentAt = System.currentTimeMillis()
     }
 
     private val clients = CopyOnWriteArrayList<Client>()
@@ -38,7 +45,8 @@ class VideoServer(private val log: (String) -> Unit, private val onClient: () ->
                 while (!ss.isClosed) {
                     val s = ss.accept()
                     s.tcpNoDelay = true
-                    s.sendBufferSize = 1 shl 20
+                    // Kucuk tampon: ag yavaslarsa kareler telefonda birikip gecikme yaratmasin
+                    s.sendBufferSize = 64 * 1024
                     val c = Client(s)
                     clients.add(c)
                     log("PC goruntuye baglandi: ${s.inetAddress.hostAddress}")
@@ -71,9 +79,17 @@ class VideoServer(private val log: (String) -> Unit, private val onClient: () ->
                 c.needKey = false
             }
             if (!c.q.offer(Triple(data, pts, f))) {
-                // Ag yetismiyor: kuyrugu bosalt, bir sonraki anahtar kareden devam et
                 c.q.clear()
                 c.needKey = true
+                if (System.currentTimeMillis() - c.lastSentAt > 3000) {
+                    // 3 sn'dir hic yazilamiyor: PC kapanmis, olu baglantiyi at
+                    log("Yanit vermeyen PC baglantisi kapatildi")
+                    try { c.sock.close() } catch (_: Exception) {}
+                    clients.remove(c)
+                    continue
+                }
+                // Ag yetismiyor: kuyrugu bosalt, bir sonraki anahtar kareden devam et
+                onCongestion()
                 onClient()
             }
         }
@@ -89,6 +105,7 @@ class VideoServer(private val log: (String) -> Unit, private val onClient: () ->
                 out.writeByte(f)
                 out.write(d)
                 if (c.q.isEmpty()) out.flush()
+                c.lastSentAt = System.currentTimeMillis()
             }
         } catch (_: Exception) {
         } finally {
