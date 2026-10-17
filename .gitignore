@@ -4,3 +4,9 @@ android/app/build/
 android/local.properties
 __pycache__/
 *.pyc
+build/
+dist/
+*.spec
+pc/adb/
+release/
+pc/build.log

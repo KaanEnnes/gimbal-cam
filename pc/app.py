@@ -790,7 +790,7 @@ class MainWindow(QMainWindow):
         note = self.note[0] if time.time() - self.note[1] < 8 else ""
         self.statusbar.setText(
             (note + "   ·   " if note else "")
-            + f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)})  ·  Takip: {'açık' if self.tracking else 'kapalı'}"
+            + f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)})  ·  Takip: {('aranıyor…' if self.tracker.searching else 'açık') if self.tracking else 'kapalı'}"
         )
 
     def tracker_dead(self, dead):

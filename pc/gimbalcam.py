@@ -222,6 +222,10 @@ class FaceTracker:
         self.sx = 0.0
         self.sy = 0.0
         self.dead = 0.08
+        # Kaybolunca son goruldugu yone dogru arama
+        self.last_e = None
+        self.last_seen = 0.0
+        self.searching = False
 
     def _detect(self, frame):
         h, w = frame.shape[:2]
@@ -237,6 +241,23 @@ class FaceTracker:
         gray = cv2.equalizeHist(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
         faces = self.det.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=5, minSize=(20, 20))
         return [tuple(int(v / scale) for v in f) for f in faces]
+
+    def _search(self, max_speed):
+        """Yuz kadrajdan ciktiysa son goruldugu tarafa dogru kisa sure don."""
+        self.searching = False
+        if self.last_e is None:
+            return 0, 0
+        gone = time.time() - self.last_seen
+        ex, ey = self.last_e
+        sx = sy = 0.0
+        # Yatayda 3 sn ara; dikeyde sadece 1 sn (dikey uca dayaninca gimbal kendini birakiyor)
+        if gone < 3.0 and abs(ex) > 0.2:
+            sx = 0.45 if ex > 0 else -0.45
+        if gone < 1.0 and abs(ey) > 0.3:
+            sy = 0.3 if ey > 0 else -0.3
+        if sx or sy:
+            self.searching = True
+        return int(sx * max_speed), int(sy * max_speed)
 
     def update(self, frame, max_speed):
         h, w = frame.shape[:2]
@@ -255,13 +276,16 @@ class FaceTracker:
         if self.box is None:
             self.sx *= 0.5
             self.sy *= 0.5
-            return 0, 0
+            return self._search(max_speed)
+        self.searching = False
         x, y, bw, bh = self.box
         ex = ((x + bw / 2) - w / 2) / (w / 2)  # -1..1, + = yuz sagda
         ey = (h / 2 - (y + bh / 2.5)) / (h / 2)  # + = yuz yukarida (yuzu biraz ust tarafa koy)
         dead = self.dead
         tx = 0 if abs(ex) < dead else ex
         ty = 0 if abs(ey) < dead else ey
+        self.last_e = (ex, ey)
+        self.last_seen = time.time()
         # Yumusatma: ani hiz sicramalari olmasin
         self.sx = self.sx * 0.6 + tx * 0.4
         self.sy = self.sy * 0.6 + ty * 0.4

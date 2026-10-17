@@ -1,0 +1,155 @@
+﻿powershell : 158 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.8
+At line:1 char:302
++ ... tch {} } }; powershell -ExecutionPolicy Bypass -File C:\Users\mrkaa\p ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (158 INFO: PyIns...b hooks: 2026.8:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+158 INFO: Python: 3.12.10
+186 INFO: Platform: Windows-11-10.0.26300-SP0
+186 INFO: Python environment: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312
+187 INFO: wrote C:\Users\mrkaa\projects\gimbal-cam\pc\GimbalCam.spec
+193 INFO: Removing temporary files and cleaning cache in C:\Users\mrkaa\AppData\Local\pyinstaller
+200 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\mrkaa\\projects\\gimbal-cam\\pc',
+ 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip',
+ 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\DLLs',
+ 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib',
+ 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312',
+ 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages',
+ 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\win32',
+ 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\win32\\lib',
+ 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\pythonwin',
+ 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages',
+ 'C:\\Users\\mrkaa\\projects\\gimbal-cam\\pc']
+611 INFO: Appending 'binaries' from .spec
+612 INFO: Appending 'datas' from .spec
+612 INFO: checking Analysis
+612 INFO: Building Analysis because Analysis-00.toc is non existent
+612 INFO: Looking for Python shared library...
+612 INFO: Using Python shared library: C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\python312.dll
+612 INFO: Running Analysis Analysis-00.toc
+612 INFO: Target bytecode optimization level: 0
+612 INFO: Initializing module dependency graph...
+614 INFO: Initializing module graph hook caches...
+632 INFO: Analyzing modules for base_library.zip ...
+1796 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+2177 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
+hon312\\Lib\\site-packages\\PyInstaller\\hooks'
+2863 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
+ython312\\Lib\\site-packages\\PyInstaller\\hooks'
+3531 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
+thon312\\Lib\\site-packages\\PyInstaller\\hooks'
+3812 INFO: Caching module dependency graph...
+3845 INFO: Analyzing C:\Users\mrkaa\projects\gimbal-cam\pc\app.py
+3875 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+4448 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Py
+thon312\\Lib\\site-packages\\PyInstaller\\hooks'
+4766 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\P
+rograms\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+4767 INFO: SetuptoolsInfo: initializing cached setuptools info...
+5667 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
+ams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+5778 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks'
+5934 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+6413 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\
+\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+6519 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+6655 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
+n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+7571 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+7846 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\P
+ython312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+8114 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
+s\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+8384 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\
+Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+8592 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python
+\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+8724 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs
+\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11083 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
+Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+15141 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\P
+ython\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+40706 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Program
+s\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+45162 INFO: Processing standard module hook 'hook-av.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+45822 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyt
+hon312\\Lib\\site-packages\\PyInstaller\\hooks'
+46093 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pytho
+n\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+46485 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pr
+ograms\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+46618 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\
+\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+46988 INFO: Processing module hooks (post-graph stage)...
+47389 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Pro
+grams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+47482 INFO: Performing binary vs. data reclassification (157 entries)
+47675 INFO: Looking for ctypes DLLs
+47710 INFO: Analyzing run-time hooks ...
+47713 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47717 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47720 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Pyth
+on\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47722 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pyth
+on312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+47724 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Progr
+ams\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+47726 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\
+Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+47742 INFO: Creating base_library.zip...
+47760 INFO: Looking for dynamic libraries
+48611 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Pytho
+n312\\Lib\\site-packages\\shiboken6', 'C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages\\numpy.libs
+', 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\av.libs', 'C:\\Users\\mrkaa\\App
+Data\\Roaming\\Python\\Python312\\site-packages\\cv2\\../../x64/vc17/bin']
+48611 INFO: Extra DLL search directories (PATH): ['C:\\Users\\mrkaa\\AppData\\Roaming\\Python\\Python312\\site-packages
+\\cv2\\../../x64/vc17/bin', 'C:\\Users\\mrkaa\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PySide6
+']
+51380 INFO: Warnings written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\warn-GimbalCam.txt
+51429 INFO: Graph cross-reference written to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\xref-GimbalCam.html
+51454 INFO: checking PYZ
+51454 INFO: Building PYZ because PYZ-00.toc is non existent
+51454 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz
+51869 INFO: Building PYZ (ZlibArchive) C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\PYZ-00.pyz completed succe
+ssfully.
+51880 INFO: checking PKG
+51880 INFO: Building PKG because PKG-00.toc is non existent
+51880 INFO: Building PKG (CArchive) GimbalCam.pkg
+51913 INFO: Building PKG (CArchive) GimbalCam.pkg completed successfully.
+51913 INFO: Bootloader C:\Users\mrkaa\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyInstaller\bootloader\
+Windows-64bit-intel\runw.exe
+51913 INFO: checking EXE
+51913 INFO: Building EXE because EXE-00.toc is non existent
+51913 INFO: Building EXE from EXE-00.toc
+51913 INFO: Copying bootloader EXE to C:\Users\mrkaa\projects\gimbal-cam\pc\build\GimbalCam\GimbalCam.exe
+51917 INFO: Copying icon to EXE
+51920 INFO: Copying 0 resources to EXE
+51920 INFO: Embedding manifest in EXE
+51923 INFO: Appending PKG archive to EXE
+51925 INFO: Fixing EXE headers
+51983 INFO: Building EXE from EXE-00.toc completed successfully.
+51986 INFO: checking COLLECT
+51987 INFO: Building COLLECT because COLLECT-00.toc is non existent
+51987 INFO: Removing dir C:\Users\mrkaa\projects\gimbal-cam\pc\dist\GimbalCam
+52102 INFO: Building COLLECT COLLECT-00.toc
+52739 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+52744 INFO: Build complete! The results are available in: C:\Users\mrkaa\projects\gimbal-cam\pc\dist
+[=========                              ] 25%                                   
+Name                    MB
+----                    --
+GimbalCam-Kurulum.exe 80,4
+GimbalCam.apk            2
+
+

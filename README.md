@@ -1,6 +1,6 @@
 # GimbalCam
 
-Telefon kamerasını PC'ye aktarır (DroidCam benzeri) ve Merak One M1 gimbal'ı PC'den sürer.
+Telefon kamerasını PC'ye aktarır ve Merak One M1 gimbal'ı PC'den sürer.
 
 - `android/` — telefon uygulaması (Kotlin). Camera2 → donanım H.264 → TCP 8686; kontrol TCP 8687 (satır satır JSON); gimbal'a BLE köprüsü.
 - `pc/` — masaüstü uygulaması (PySide6). Görüntü, joystick/klavye, yüz takibi, kamera ayarları, sanal kamera (OBS Virtual Camera), kayıt/fotoğraf.
