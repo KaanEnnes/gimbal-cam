@@ -243,6 +243,8 @@ class MainActivity : Activity() {
                 .put("t", "status")
                 .put("gimbal", gimbal.state)
                 .put("gimbalConnected", gimbal.connected)
+                .put("drops", gimbal.drops)
+                .put("dropReason", gimbal.lastDropStatus)
                 .put("camera", s.cameraId)
                 .put("rot", rotation)
                 .put("front", camera.isFront())

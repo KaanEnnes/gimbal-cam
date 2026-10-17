@@ -88,6 +88,11 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
         private set
     @Volatile var deviceName = ""
         private set
+    /** Baglantinin kac kez koptugu ve son kopma sebebi (8 = sinyal/zaman asimi, 19 = gimbal kapatti) */
+    @Volatile var drops = 0
+        private set
+    @Volatile var lastDropStatus = -1
+        private set
     var onState: ((String) -> Unit)? = null
 
     private fun setState(s: String) {
@@ -169,14 +174,17 @@ class GimbalBle(private val ctx: Context, private val log: (String) -> Unit) {
             log("BLE durum: status=$status state=$newState")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 main.post { setState("servisler okunuyor") }
+                // Wi-Fi ile ayni anteni paylasiyoruz: yuksek oncelik baglantiyi saglamlastirir
+                g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                 g.requestMtu(185)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (writeChar != null) { drops++; lastDropStatus = status }
                 g.close()
                 main.post {
                     gatt = null
                     writeChar = null
                     synchronized(queue) { queue.clear(); writing = false }
-                    setState("baglanti koptu")
+                    setState("baglanti koptu (sebep $status)")
                     if (wanted) main.postDelayed({ start() }, 1500)
                 }
             }

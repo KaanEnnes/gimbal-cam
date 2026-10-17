@@ -600,6 +600,9 @@ class MainWindow(QMainWindow):
         elif self.tracking and self.frame is not None and new:
             self.tracker_dead(self.dead)
             mx, my = self.tracker.update(self.frame, self.speed)
+            if st.get("front"):
+                # Gimbal telefonu yukari egince on kamera asagi bakar: dikey yon ters
+                my = -my
         elif self.tracking:
             mx, my = self.last_cmd[0] or (0, 0)
         else:
@@ -646,7 +649,7 @@ class MainWindow(QMainWindow):
         self.view.show_frame(disp)
         gs = st.get("gimbal", "?")
         self.statusbar.setText(
-            f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs}  ·  Takip: {'açık' if self.tracking else 'kapalı'}"
+            f"{fw}×{fh}  ·  {ph.fps:.0f} fps  ·  Gimbal: {gs} (kopma {st.get('drops', 0)}, sebep {st.get('dropReason', '-')})  ·  Takip: {'açık' if self.tracking else 'kapalı'}"
         )
 
     def tracker_dead(self, dead):
