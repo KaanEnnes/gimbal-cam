@@ -10,3 +10,4 @@ dist/
 pc/adb/
 release/
 pc/build.log
+pc/bin/

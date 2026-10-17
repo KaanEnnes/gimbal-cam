@@ -15,12 +15,16 @@ Pop-Location
 
 # 2) PC uygulamasi
 Push-Location (Join-Path $root "pc")
-New-Item -ItemType Directory -Force adb | Out-Null
+New-Item -ItemType Directory -Force adb, bin | Out-Null
+if (-not (Test-Path bin\cloudflared.exe)) {
+  Invoke-WebRequest "https://github.com/cloudflare/cloudflared/releases/download/2025.8.1/cloudflared-windows-amd64.exe" -OutFile bin\cloudflared.exe
+}
 Copy-Item "$sdk\platform-tools\adb.exe", "$sdk\platform-tools\AdbWinApi.dll", "$sdk\platform-tools\AdbWinUsbApi.dll" adb -Force
 python -m PyInstaller --noconfirm --clean --onedir --windowed --name GimbalCam --icon icon.ico `
   --add-data "face_detection_yunet_2023mar.onnx;." --add-data "icon.png;." `
   --add-binary "adb/adb.exe;adb" --add-binary "adb/AdbWinApi.dll;adb" --add-binary "adb/AdbWinUsbApi.dll;adb" `
-  --hidden-import kablosuz_eslestir --exclude-module tkinter --exclude-module matplotlib app.py
+  --add-binary "bin/cloudflared.exe;bin" `
+  --hidden-import kablosuz_eslestir --hidden-import room --exclude-module tkinter --exclude-module matplotlib app.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller basarisiz" }
 # Kullanilmayan Qt parcalari (QML/Quick/PDF/yazilim OpenGL/ceviriler) -> boyut kucultme
 $qt = "dist\GimbalCam\_internal\PySide6"

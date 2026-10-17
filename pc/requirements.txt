@@ -3,3 +3,5 @@ opencv-python
 numpy
 pyvirtualcam
 PySide6
+aiohttp
+qrcode[pil]

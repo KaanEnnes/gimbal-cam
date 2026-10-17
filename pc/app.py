@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from gimbalcam import FaceTracker, Phone, setup_usb
+from room import QuickTunnel, RoomServer
 
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Videos", "GimbalCam")
 
@@ -314,6 +315,10 @@ class MainWindow(QMainWindow):
         self.rot = 0
         self.maps = {}  # (kamera, yon) -> AxisMap
         self.note = ("", 0.0)
+        self.room = None
+        self.tunnel = None
+        self.room_last_frame = 0.0
+        self.viewer_active_until = 0.0
         self.cal = None  # devam eden kalibrasyon
         self._usb_result = None
 
@@ -451,6 +456,33 @@ class MainWindow(QMainWindow):
         lay.addWidget(tip)
         pv.addWidget(c)
 
+        # Oda
+        c, lay = card("Oda (uzaktan izleme)")
+        self.room_pass = QLineEdit()
+        self.room_pass.setPlaceholderText("Oda şifresi (en az 4 karakter)")
+        self.room_pass.setEchoMode(QLineEdit.Password)
+        self.room_pass.setText(self.settings.value("room_pass", ""))
+        lay.addWidget(self.room_pass)
+        self.btn_room = QPushButton("Oda kur")
+        self.btn_room.setObjectName("primary")
+        self.btn_room.setCheckable(True)
+        self.btn_room.toggled.connect(self.toggle_room)
+        lay.addWidget(self.btn_room)
+        self.room_code = QLabel("")
+        self.room_code.setAlignment(Qt.AlignCenter)
+        self.room_code.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.room_code.setStyleSheet("font-size:13pt; font-weight:600; color:#5c8dff;")
+        lay.addWidget(self.room_code)
+        self.btn_copy = QPushButton("Davet linkini kopyala")
+        self.btn_copy.setEnabled(False)
+        self.btn_copy.clicked.connect(self.copy_room_link)
+        lay.addWidget(self.btn_copy)
+        self.room_info = QLabel("Odayı kurunca kod ve link burada görünür. Katılan kişi kaanai.site/gimbal → Odaya katıl.")
+        self.room_info.setObjectName("muted")
+        self.room_info.setWordWrap(True)
+        lay.addWidget(self.room_info)
+        pv.addWidget(c)
+
         # Cikti
         c, lay = card("Çıktı")
         self.btn_vcam = QPushButton("Sanal kamera")
@@ -531,6 +563,71 @@ class MainWindow(QMainWindow):
         elif r == 270:
             x, y = 1 - y, x
         self.send(t="focus", x=x, y=y)
+
+    # ---------- oda ----------
+    def toggle_room(self, on):
+        if on:
+            pw = self.room_pass.text()
+            if len(pw) < 4:
+                self.room_info.setText("Şifre en az 4 karakter olmalı.")
+                self.btn_room.setChecked(False)
+                return
+            self.settings.setValue("room_pass", pw)
+            self.room = RoomServer(pw)
+            port = self.room.start()
+            self.tunnel = QuickTunnel(port)
+            self.tunnel.start()
+            self.btn_room.setText("Odayı kapat")
+            self.room_pass.setEnabled(False)
+            self.room_code.setText("Oda açılıyor…")
+            self.room_info.setText("İnternete açılıyor (5-15 sn).")
+        else:
+            if self.tunnel:
+                self.tunnel.stop()
+            if self.room:
+                self.room.stop()
+            self.room = self.tunnel = None
+            self.btn_room.setText("Oda kur")
+            self.room_pass.setEnabled(True)
+            self.room_code.setText("")
+            self.btn_copy.setEnabled(False)
+            self.room_info.setText("Oda kapalı.")
+
+    def room_link(self):
+        return f"https://kaanai.site/gimbal/oda/#{self.tunnel.code}" if self.tunnel and self.tunnel.code else ""
+
+    def copy_room_link(self):
+        link = self.room_link()
+        if link:
+            QApplication.clipboard().setText(link)
+            self.set_note("Davet linki kopyalandı (şifreyi ayrıca söyle).")
+
+    def room_tick(self, now):
+        r, t = self.room, self.tunnel
+        if not r or not t:
+            return
+        if t.url and not self.btn_copy.isEnabled():
+            self.room_code.setText(f"Oda kodu: {t.code}")
+            self.btn_copy.setEnabled(True)
+        if t.error and not t.url:
+            self.room_info.setText(f"Oda internete açılamadı: {t.error}")
+        if t.url:
+            names = r.viewer_names
+            self.room_info.setText(
+                ("İzleyenler: " + ", ".join(names)) if names else "Oda açık. Henüz kimse bağlanmadı."
+            )
+        r.set_info(tracking=self.tracking, rot=self.rot)
+        # Izleyici varsa ~15 fps JPEG gonder (genislik en fazla 960)
+        if r.viewers and self.frame is not None and now - self.room_last_frame >= 1 / 15:
+            self.room_last_frame = now
+            f = self.frame
+            h, w = f.shape[:2]
+            if max(w, h) > 960:
+                sc = 960 / max(w, h)
+                f = cv2.resize(f, (int(w * sc), int(h * sc)))
+            ok, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 72])
+            if ok:
+                r.push_frame(buf.tobytes())
 
     def open_pairing(self):
         from kablosuz_eslestir import PairWindow
@@ -722,6 +819,7 @@ class MainWindow(QMainWindow):
 
         # --- gimbal komutu ---
         now = time.time()
+        self.room_tick(now)
         key = (st.get("camera"), self.rot)
         amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
         if self.cal is not None:
@@ -733,8 +831,15 @@ class MainWindow(QMainWindow):
             kx = (1 if "R" in self.keys else 0) - (1 if "L" in self.keys else 0)
             ky = (1 if "U" in self.keys else 0) - (1 if "D" in self.keys else 0)
             manual = bool(jx or jy or kx or ky)
+            vmove = self.room.current_move() if self.room else None
             if manual:
                 mx, my = amap.to_cmd((jx + kx) * self.speed, (jy + ky) * self.speed)
+            elif vmove is not None:
+                # Odadaki izleyici joystick'i: takip 2 sn duraklar
+                self.viewer_active_until = now + 2.0
+                mx, my = amap.to_cmd(vmove[0] * self.speed, vmove[1] * self.speed)
+            elif now < self.viewer_active_until:
+                mx = my = 0
             elif self.tracking and key not in self.maps and self.frame is not None and ph.video_ok:
                 self.start_calibration()
                 mx = my = 0
@@ -797,6 +902,8 @@ class MainWindow(QMainWindow):
         self.tracker.dead = dead
 
     def closeEvent(self, e):
+        if self.room:
+            self.toggle_room(False)
         self.send(t="stop")
         if self.writer:
             self.writer.release()
