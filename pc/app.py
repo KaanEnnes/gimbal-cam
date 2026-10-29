@@ -505,6 +505,12 @@ class MainWindow(QMainWindow):
         self.room_pass.setPlaceholderText("Oda şifresi (en az 4 karakter)")
         self.room_pass.setEchoMode(QLineEdit.Password)
         self.room_pass.setText(self.settings.value("room_pass", ""))
+        self.chk_autopass = QCheckBox("Şifreyi otomatik oluştur")
+        self.chk_autopass.setToolTip("Her oda kurulduğunda yeni, 6 haneli rastgele şifre")
+        self.chk_autopass.setChecked(self.settings.value("auto_pass", "true") == "true")
+        self.chk_autopass.toggled.connect(lambda v: (self.settings.setValue("auto_pass", "true" if v else "false"), self.room_pass.setVisible(not v)))
+        self.room_pass.setVisible(not self.chk_autopass.isChecked())
+        lay.addWidget(self.chk_autopass)
         lay.addWidget(self.room_pass)
         self.btn_room = QPushButton("Oda kur")
         self.btn_room.setObjectName("primary")
@@ -516,7 +522,12 @@ class MainWindow(QMainWindow):
         self.room_code.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.room_code.setStyleSheet("font-size:13pt; font-weight:600; color:#5c8dff;")
         lay.addWidget(self.room_code)
-        self.btn_copy = QPushButton("Davet linkini kopyala")
+        self.room_pw_label = QLabel("")
+        self.room_pw_label.setAlignment(Qt.AlignCenter)
+        self.room_pw_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.room_pw_label.setStyleSheet("font-size:15pt; font-weight:700; letter-spacing:3px; color:#e6e8ee;")
+        lay.addWidget(self.room_pw_label)
+        self.btn_copy = QPushButton("Daveti kopyala (link + şifre)")
         self.btn_copy.setEnabled(False)
         self.btn_copy.clicked.connect(self.copy_room_link)
         lay.addWidget(self.btn_copy)
@@ -623,6 +634,10 @@ class MainWindow(QMainWindow):
     # ---------- oda ----------
     def toggle_room(self, on):
         if on:
+            if self.chk_autopass.isChecked():
+                import secrets
+                pw = f"{secrets.randbelow(1_000_000):06d}"
+                self.room_pass.setText(pw)
             pw = self.room_pass.text()
             if len(pw) < 4:
                 self.room_info.setText("Şifre en az 4 karakter olmalı.")
@@ -652,6 +667,7 @@ class MainWindow(QMainWindow):
             self.btn_room.setText("Oda kur")
             self.room_pass.setEnabled(True)
             self.room_code.setText("")
+            self.room_pw_label.setText("")
             self.btn_copy.setEnabled(False)
             self.room_info.setText("Oda kapalı.")
 
@@ -661,8 +677,8 @@ class MainWindow(QMainWindow):
     def copy_room_link(self):
         link = self.room_link()
         if link:
-            QApplication.clipboard().setText(link)
-            self.set_note("Davet linki kopyalandı (şifreyi ayrıca söyle).")
+            QApplication.clipboard().setText(f"GimbalCam odasına katıl: {link}\nŞifre: {self.room.password}")
+            self.set_note("Davet kopyalandı: link + şifre. Yapıştırıp gönderebilirsin.")
 
     def room_tick(self, now):
         r, t = self.room, self.tunnel
@@ -670,6 +686,7 @@ class MainWindow(QMainWindow):
             return
         if t.url and not self.btn_copy.isEnabled():
             self.room_code.setText(f"Oda kodu: {t.code}")
+            self.room_pw_label.setText(f"Şifre: {self.room.password}")
             self.btn_copy.setEnabled(True)
         if t.error and not t.url:
             self.room_info.setText(f"Oda internete açılamadı: {t.error}")
