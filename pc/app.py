@@ -318,6 +318,7 @@ class MainWindow(QMainWindow):
         self.room = None
         self.tunnel = None
         self.player = AudioPlayer()
+        self.talk_player = AudioPlayer()  # odadaki kisinin bas-konus sesi (PC hoparloru)
         self.wake_wanted_at = 0.0     # sarjdayken biri kullanmak istedi
         self.tilt_s = 0.0             # ufuk kilidi: yumusatilmis egiklik
         self.last_wants_sent = 0.0    # telefona "ses/egim istiyorum" bildirimi
@@ -527,6 +528,16 @@ class MainWindow(QMainWindow):
         self.room_pw_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.room_pw_label.setStyleSheet("font-size:15pt; font-weight:700; letter-spacing:3px; color:#e6e8ee;")
         lay.addWidget(self.room_pw_label)
+        trow = QHBoxLayout()
+        trow.addWidget(QLabel("Bas-konuş sesi"))
+        self.cb_talk_out = QComboBox()
+        self.cb_talk_out.addItem("PC hoparlörü", "pc")
+        self.cb_talk_out.addItem("Telefon hoparlörü", "phone")
+        i = self.cb_talk_out.findData(self.settings.value("talk_out", "pc"))
+        self.cb_talk_out.setCurrentIndex(max(0, i))
+        self.cb_talk_out.currentIndexChanged.connect(lambda _: self.settings.setValue("talk_out", self.cb_talk_out.currentData()))
+        trow.addWidget(self.cb_talk_out, 1)
+        lay.addLayout(trow)
         self.btn_copy = QPushButton("Daveti kopyala (link + şifre)")
         self.btn_copy.setEnabled(False)
         self.btn_copy.clicked.connect(self.copy_room_link)
@@ -754,9 +765,16 @@ class MainWindow(QMainWindow):
                 r.push_frame(buf.tobytes())
 
     def _on_talk(self, pcm, name):
-        # Oda is parcaciginda: izleyicinin sesini telefona (hoparlor) ilet
-        import base64
-        self.send(t="talk", pcm=base64.b64encode(pcm).decode())
+        # Oda is parcaciginda: izleyicinin sesi PC'den ya da telefondan calinir
+        if self.settings.value("talk_out", "pc") == "pc":
+            if not self.talk_player.stream:
+                self.talk_player.start()
+            self.talk_player.feed(pcm)
+            # Telefon mikrofonu da kisa sure sussun: PC'den cikan ses Asu'ya yanki olarak donmesin
+            self.send(t="duck")
+        else:
+            import base64
+            self.send(t="talk", pcm=base64.b64encode(pcm).decode())
 
     def remote_command(self, d):
         """Odadaki izleyicinin komutu. Ayni arayuz elemanlari uzerinden uygulanir (PC ekrani da guncellenir)."""
@@ -1213,6 +1231,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, e):
         self.player.stop()
+        self.talk_player.stop()
         if self.room:
             self.toggle_room(False)
         self.send(t="stop")

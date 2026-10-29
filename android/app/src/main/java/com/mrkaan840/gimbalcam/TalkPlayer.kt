@@ -20,6 +20,9 @@ class TalkPlayer(private val log: (String) -> Unit) {
     /** Son 400 ms icinde ses geldiyse konusma suruyor. */
     val talking get() = System.currentTimeMillis() - lastAt < 400
 
+    /** Bas-konus PC'den caliniyor: telefon calmaz ama mikrofonu yine sustursun (yanki). */
+    fun duck() { lastAt = System.currentTimeMillis() }
+
     fun feed(pcm: ByteArray) {
         lastAt = System.currentTimeMillis()
         if (!running) start()

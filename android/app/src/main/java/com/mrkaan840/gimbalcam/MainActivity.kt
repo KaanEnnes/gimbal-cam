@@ -337,6 +337,7 @@ class MainActivity : Activity() {
             }
             "tilt" -> tiltWanted = o.optBoolean("v")
             "keyframe" -> camera.requestKeyFrame()
+            "duck" -> talk.duck()
             "talk" -> {
                 // Odadaki izleyicinin sesi (base64 PCM16 24 kHz mono) -> telefon hoparloru
                 val b = o.optString("pcm")
