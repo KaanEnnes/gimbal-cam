@@ -77,6 +77,50 @@ def usb_devices(adb):
     return with_app or devs
 
 
+def find_phone_on_lan(timeout=0.4):
+    """Ayni agda GimbalCam'i acik telefonu bul (kontrol portu 8687). Modem IP degistirince isine yarar."""
+    import concurrent.futures as cf
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        my = s.getsockname()[0]
+        s.close()
+    except OSError:
+        return None
+    base = my.rsplit(".", 1)[0]
+
+    def chk(i):
+        ip = f"{base}.{i}"
+        if ip == my:
+            return None
+        c = socket.socket()
+        c.settimeout(timeout)
+        try:
+            c.connect((ip, CONTROL_PORT))
+            c.settimeout(2)
+            # Gercekten GimbalCam mi? Baglaninca durum satiri gonderir
+            line = c.makefile("r", encoding="utf-8").readline()
+            return ip if '"status"' in line or '"t"' in line else None
+        except Exception:
+            return None
+        finally:
+            c.close()
+
+    with cf.ThreadPoolExecutor(128) as ex:
+        for ip in ex.map(chk, range(1, 255)):
+            if ip:
+                return ip
+    return None
+
+
+def port_open(host, port=CONTROL_PORT, timeout=1.5):
+    try:
+        socket.create_connection((host, port), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
 def setup_usb(serial=None):
     adb = find_adb()
     if not adb:

@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMainWindow, QPushButton, QSystemTrayIcon, QRadioButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget,
 )
 
-from gimbalcam import AudioPlayer, FaceTracker, Phone, resource, setup_usb
+from gimbalcam import AudioPlayer, FaceTracker, Phone, find_phone_on_lan, port_open, resource, setup_usb
 from room import QuickTunnel, RoomServer
 
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Videos", "GimbalCam")
@@ -591,7 +591,19 @@ class MainWindow(QMainWindow):
                 self.statusbar.setText("Wi-Fi için telefonun IP adresini yaz (telefon ekranının sol üstünde).")
                 return
             self.settings.setValue("ip", host)
-            self._start_phone(host)
+            # Modem telefona yeni IP vermis olabilir: kayitli adres cevap vermezse agda ara
+            self.statusbar.setText(f"Bağlanılıyor: {host}…")
+            self.btn_connect.setEnabled(False)
+            self._usb_result = None
+
+            def work():
+                if port_open(host):
+                    self._usb_result = host
+                    return
+                found = find_phone_on_lan()
+                self._usb_result = found or host
+
+            threading.Thread(target=work, daemon=True).start()
         else:
             # adb yavas/takili olabilir: arayuz donmasin diye arka planda bul
             self.statusbar.setText("Telefon aranıyor (adb)…")
@@ -1002,6 +1014,10 @@ class MainWindow(QMainWindow):
             host, self._usb_result = self._usb_result, None
             self.btn_connect.setEnabled(True)
             if host:
+                if self.rb_wifi.isChecked() and host != self.ip.text().strip():
+                    self.ip.setText(host)
+                    self.settings.setValue("ip", host)
+                    self.set_note(f"Telefonun yeni adresi bulundu: {host}")
                 self._start_phone(host)
             else:
                 self.statusbar.setText("USB/kablosuz adb ile telefon bulunamadı. Wi-Fi seçip telefonun IP'sini yaz.")
