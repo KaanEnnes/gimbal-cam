@@ -712,7 +712,11 @@ class MainWindow(QMainWindow):
             if self._room_phone and r.push_packet in self._room_phone.packet_listeners:
                 self._room_phone.packet_listeners.remove(r.push_packet)
             if self.phone:
+                # Oda baglantidan sonra acildiysa ilk SPS/PPS'i kacirdi: sakli olani ver (yoksa "Goruntu bekleniyor")
+                if self.phone.last_config:
+                    r.push_packet(*self.phone.last_config)
                 self.phone.packet_listeners.append(r.push_packet)
+                self.send(t="keyframe")
             self._room_phone = self.phone
         st = self.phone.status if self.phone else {}
         talking = r.talking

@@ -174,6 +174,8 @@ class Phone:
         self._stop = False
         # Ham H.264 paketlerini isteyenler (oda): fn(data, pts, flags) ; flags: 2=SPS/PPS, 1=anahtar kare
         self.packet_listeners = []
+        # Son codec ayar paketi (SPS/PPS) ve bayraklari: sonradan acilan oda da hemen cozebilsin
+        self.last_config = None
         # Ses (PCM 16 bit, 24 kHz, mono) dinleyicileri: fn(pcm_bytes)
         self.audio_listeners = []
         threading.Thread(target=self._video_loop, daemon=True).start()
@@ -220,6 +222,8 @@ class Phone:
                             except Exception:
                                 pass
                         continue
+                    if flags & 2:
+                        self.last_config = (data, pts, flags)
                     for cb in list(self.packet_listeners):
                         try:
                             cb(data, pts, flags)
