@@ -416,3 +416,56 @@ class QuickTunnel:
     def stop(self):
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
+
+
+class RoomDirectory:
+    """ev.kaanai.site oda rehberi: oda listede gorunsun, kisa kodla (4 harf) katilinsin.
+    Rehbere ulasilamazsa oda yine calisir; davet linki uzun tunel koduyla olur."""
+
+    BASE = "https://ev.kaanai.site/gimbal/rooms"
+
+    def __init__(self, name, url, viewers_fn):
+        self.name, self.url, self.viewers_fn = name, url, viewers_fn
+        self.id = None
+        self.token = None
+        self.error = None
+        self._stop = threading.Event()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _post(self, path, payload, timeout=60):
+        import json as _json
+        import urllib.request
+        req = urllib.request.Request(self.BASE + path, data=_json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return _json.loads(r.read().decode())
+
+    def _register(self):
+        # Render uyuyorsa ilk istek 30-60 sn surebilir (soguk baslangic)
+        d = self._post("", {"name": self.name, "url": self.url}, timeout=90)
+        self.id, self.token, self.error = d["id"], d["token"], None
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                if not self.id:
+                    self._register()
+                else:
+                    try:
+                        self._post(f"/{self.id}/beat", {"token": self.token, "viewers": self.viewers_fn()})
+                    except Exception as e:
+                        if getattr(e, "code", None) == 404:   # rehber yeniden basladi: tekrar kaydol
+                            self.id = None
+                            continue
+                        raise
+            except Exception as e:
+                self.error = str(e)[:120]
+            self._stop.wait(20)
+
+    def close(self):
+        self._stop.set()
+        if self.id:
+            try:
+                self._post(f"/{self.id}/close", {"token": self.token}, timeout=5)
+            except Exception:
+                pass

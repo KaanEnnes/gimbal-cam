@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from gimbalcam import AudioPlayer, FaceTracker, Phone, find_phone_on_lan, port_open, resource, setup_usb
-from room import QuickTunnel, RoomServer
+from room import QuickTunnel, RoomDirectory, RoomServer
 
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Videos", "GimbalCam")
 
@@ -502,6 +502,10 @@ class MainWindow(QMainWindow):
 
         # Oda
         c, lay = card("Oda (uzaktan izleme)")
+        self.room_name = QLineEdit()
+        self.room_name.setPlaceholderText("Oda adı (listede görünür)")
+        self.room_name.setText(self.settings.value("room_name", "Kaan'ın odası"))
+        lay.addWidget(self.room_name)
         self.room_pass = QLineEdit()
         self.room_pass.setPlaceholderText("Oda şifresi (en az 4 karakter)")
         self.room_pass.setEchoMode(QLineEdit.Password)
@@ -667,6 +671,8 @@ class MainWindow(QMainWindow):
                 self.btn_room.setChecked(False)
                 return
             self.settings.setValue("room_pass", pw)
+            self.settings.setValue("room_name", self.room_name.text().strip() or "GimbalCam odası")
+            self.directory = None
             self.room = RoomServer(pw)
             self.room.on_talk = self._on_talk
             port = self.room.start()
@@ -679,6 +685,9 @@ class MainWindow(QMainWindow):
             self.room_code.setText("Oda açılıyor…")
             self.room_info.setText("İnternete açılıyor (5-15 sn).")
         else:
+            if getattr(self, "directory", None):
+                self.directory.close()
+                self.directory = None
             if self.tunnel:
                 self.tunnel.stop()
             if self.room:
@@ -695,6 +704,9 @@ class MainWindow(QMainWindow):
             self.room_info.setText("Oda kapalı.")
 
     def room_link(self):
+        d = getattr(self, "directory", None)
+        if d and d.id:
+            return f"https://kaanai.site/gimbal/oda/#{d.id}"
         return f"https://kaanai.site/gimbal/oda/#{self.tunnel.code}" if self.tunnel and self.tunnel.code else ""
 
     def copy_room_link(self):
@@ -707,6 +719,12 @@ class MainWindow(QMainWindow):
         r, t = self.room, self.tunnel
         if not r or not t:
             return
+        if t.url and getattr(self, "directory", None) is None:
+            self.directory = RoomDirectory(self.room_name.text().strip() or "GimbalCam odası", t.url,
+                                           lambda: len(r.viewers))
+        d = getattr(self, "directory", None)
+        if d and d.id and not self.room_code.text().endswith(d.id):
+            self.room_code.setText(f"Oda kodu: {d.id}")
         if t.url and not self.btn_copy.isEnabled():
             self.room_code.setText(f"Oda kodu: {t.code}")
             self.room_pw_label.setText(f"Şifre: {self.room.password}")
