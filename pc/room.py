@@ -112,6 +112,24 @@ class RoomServer:
                 v["relayBusy"].add(kind)
             self._loop.create_task(self._relay_send(ws, v, msg, kind, audio))
 
+    def _relay_h264(self, src, kind, key, payload):
+        """H.264 aktarimi: alici mesgulse kare atlanamaz -> o alici bir sonraki anahtar kareye kadar bekler."""
+        sid = self.viewers.get(src, {}).get("id", 0)
+        msg = bytes([kind, sid, 1 if key else 0]) + payload
+        for ws, v in list(self.viewers.items()):
+            if ws is src or ws.closed:
+                continue
+            nk = v.setdefault("relayNeedKey", set())
+            if (kind, sid) in nk:
+                if not key:
+                    continue
+                nk.discard((kind, sid))
+            if kind in v["relayBusy"]:
+                nk.add((kind, sid))
+                continue
+            v["relayBusy"].add(kind)
+            self._loop.create_task(self._relay_send(ws, v, msg, kind, False))
+
     async def _relay_send(self, ws, v, msg, kind, audio):
         try:
             await ws.send_bytes(msg)
@@ -270,6 +288,10 @@ class RoomServer:
                         # Gorusme goruntusu: 6 = ekran/VR paylasimi, 7 = kamera (JPEG). Digerlerine aktar.
                         self.viewers[ws]["sharing"].add(d[0])
                         self._relay(ws, d[0], d[1:], audio=False)
+                    elif d[:1] == b"\x0b" and 3 < len(d) <= 512 * 1024:
+                        # Gorusme: VR/ekran paylasimi H.264 (tarayicida WebCodecs). [11][anahtar 0/1][Annex B]
+                        self.viewers[ws]["sharing"].add(6)
+                        self._relay_h264(ws, 11, d[1] == 1, d[2:])
                     elif d[:1] == b"\x09" and 2 < len(d) <= 8000:
                         # Gorusme sesi (surekli mikrofon, PCM16 24 kHz): digerlerine aktar, PC'de calinmaz
                         self._relay(ws, 9, d[1:], audio=True)
