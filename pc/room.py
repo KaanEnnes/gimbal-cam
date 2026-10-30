@@ -94,6 +94,35 @@ class RoomServer:
         if self._loop and self.viewers:
             self._loop.call_soon_threadsafe(self._fanout_h264, data, pts, bool(flags & 1))
 
+    def _relay(self, src, kind, payload, audio):
+        """Bir katilimcinin goruntu/sesini digerlerine ilet: [tur][gonderen id][veri].
+        Goruntude alici mesgulse kare atlanir (gecikme birikmesin); seste en fazla birkac parca bekler."""
+        sid = self.viewers.get(src, {}).get("id", 0)
+        msg = bytes([kind, sid]) + payload
+        for ws, v in list(self.viewers.items()):
+            if ws is src or ws.closed:
+                continue
+            if audio:
+                if v["relayAudio"] > 6:
+                    continue
+                v["relayAudio"] += 1
+            else:
+                if kind in v["relayBusy"]:
+                    continue
+                v["relayBusy"].add(kind)
+            self._loop.create_task(self._relay_send(ws, v, msg, kind, audio))
+
+    async def _relay_send(self, ws, v, msg, kind, audio):
+        try:
+            await ws.send_bytes(msg)
+        except Exception:
+            pass
+        finally:
+            if audio:
+                v["relayAudio"] -= 1
+            else:
+                v["relayBusy"].discard(kind)
+
     def push_audio(self, pcm):
         """Telefon sesi (PCM 16 bit, 24 kHz, mono) -> tum izleyicilere."""
         if self._loop and self.viewers:
@@ -186,7 +215,8 @@ class RoomServer:
         return request.headers.get("CF-Connecting-IP") or request.remote or "?"
 
     async def _ws(self, request):
-        ws = web.WebSocketResponse(heartbeat=20, max_msg_size=16384)
+        # Gorusme: katilimcilar ekran/kamera JPEG'i gonderebilir (en fazla ~512 KB kare)
+        ws = web.WebSocketResponse(heartbeat=20, max_msg_size=512 * 1024)
         await ws.prepare(request)
         ip = self._client_ip(request)
         n, until = self.fails.get(ip, (0, 0))
@@ -218,8 +248,11 @@ class RoomServer:
         self.fails.pop(ip, None)
         name = re.sub(r"[^\w çğıöşüÇĞİÖŞÜ.-]", "", str(data.get("name", "")))[:24] or "Misafir"
         mode = "h264" if data.get("codec") == "h264" else "jpeg"
-        self.viewers[ws] = {"name": name, "ip": ip, "busy": False, "mode": mode, "needKey": True}
-        await ws.send_json({"t": "ok", **self.info})
+        self._next_id = getattr(self, "_next_id", 0) % 250 + 1
+        vid = self._next_id
+        self.viewers[ws] = {"name": name, "ip": ip, "busy": False, "mode": mode, "needKey": True,
+                            "id": vid, "relayBusy": set(), "relayAudio": 0, "sharing": set()}
+        await ws.send_json({"t": "ok", "you": vid, **self.info})
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.BINARY:
@@ -233,6 +266,13 @@ class RoomServer:
                                 self.on_talk(d[1:], name)
                             except Exception:
                                 pass
+                    elif d[:1] in (b"\x06", b"\x07") and 2 < len(d) <= 512 * 1024:
+                        # Gorusme goruntusu: 6 = ekran/VR paylasimi, 7 = kamera (JPEG). Digerlerine aktar.
+                        self.viewers[ws]["sharing"].add(d[0])
+                        self._relay(ws, d[0], d[1:], audio=False)
+                    elif d[:1] == b"\x09" and 2 < len(d) <= 8000:
+                        # Gorusme sesi (surekli mikrofon, PCM16 24 kHz): digerlerine aktar, PC'de calinmaz
+                        self._relay(ws, 9, d[1:], audio=True)
                     continue
                 if msg.type != WSMsgType.TEXT:
                     continue
@@ -296,7 +336,10 @@ class RoomServer:
     async def _info_loop(self):
         while True:
             await asyncio.sleep(1.5)
-            msg = {"t": "info", "viewers": len(self.viewers), **self.info}
+            # Gorusme: kim var, kim ekran/kamera paylasiyor (dosemelere isim yazmak icin)
+            people = [{"id": v["id"], "name": v["name"], "sharing": sorted(v.get("sharing", ()))}
+                      for v in list(self.viewers.values())]
+            msg = {"t": "info", "viewers": len(self.viewers), "people": people, **self.info}
             for ws in list(self.viewers):
                 try:
                     await ws.send_json(msg)
