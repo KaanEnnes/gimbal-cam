@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from gimbalcam import AudioPlayer, FaceTracker, Phone, find_phone_on_lan, port_open, resource, setup_usb
 from room import QuickTunnel, RoomDirectory, RoomServer
+from guard import Guard, list_windows
 
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Videos", "GimbalCam")
 
@@ -188,6 +189,7 @@ class VideoView(QLabel):
 
     clicked = Signal(float, float)
     wheel = Signal(int)
+    drawn = Signal(float, float, float, float)   # kapi bolgesi cizildi (0..1)
 
     def __init__(self):
         super().__init__()
@@ -197,6 +199,8 @@ class VideoView(QLabel):
         self.setStyleSheet("background: #000; border-radius: 12px;")
         self.img_rect = QRectF()
         self.focus_mark = None  # (x, y, zaman)
+        self.draw_mode = False
+        self._drag = None
 
     def show_frame(self, frame):
         h, w = frame.shape[:2]
@@ -216,8 +220,29 @@ class VideoView(QLabel):
         self.img_rect = QRectF((self.width() - pm.width()) / 2, (self.height() - pm.height()) / 2, pm.width(), pm.height())
         self.setPixmap(pm)
 
+    def _norm(self, pos):
+        r = self.img_rect
+        return (min(1, max(0, (pos.x() - r.x()) / r.width())), min(1, max(0, (pos.y() - r.y()) / r.height())))
+
+    def mouseMoveEvent(self, e):
+        if self._drag and self.img_rect.width():
+            self._drag = (self._drag[0], self._norm(e.position()))
+
+    def mouseReleaseEvent(self, e):
+        if self._drag and self.img_rect.width():
+            (ax, ay), (bx, by) = self._drag[0], self._norm(e.position())
+            self._drag = None
+            self.draw_mode = False
+            self.setCursor(Qt.ArrowCursor)
+            if abs(bx - ax) > 0.03 and abs(by - ay) > 0.03:
+                self.drawn.emit(min(ax, bx), min(ay, by), max(ax, bx), max(ay, by))
+
     def mousePressEvent(self, e):
         r = self.img_rect
+        if self.draw_mode and r.width():
+            p = self._norm(e.position())
+            self._drag = (p, p)
+            return
         if r.width() and r.contains(e.position()):
             x = (e.position().x() - r.x()) / r.width()
             y = (e.position().y() - r.y()) / r.height()
@@ -438,9 +463,58 @@ class MainWindow(QMainWindow):
         self.chk_sleep = QCheckBox("Şarjdayken uyku (hareket etme)")
         self.chk_sleep.setChecked(self.settings.value("sleep_guard", "true") == "true")
         self.chk_sleep.setToolTip("Gimbal şarja takılıyken motorları zorlamaz; kullanmak için kabloyu çıkarman istenir")
-        self.chk_sleep.toggled.connect(lambda v: self.settings.setValue("sleep_guard", "true" if v else "false"))
+        self.chk_sleep.toggled.connect(lambda v: (self.settings.setValue("sleep_guard", "true" if v else "false"), self.send_track_params(self.phone.status if self.phone else {})))
         lay.addWidget(self.chk_sleep)
+        self.chk_vflip = QCheckBox("Takipte yukarı-aşağıyı ters çevir")
+        self.chk_vflip.setChecked(self.settings.value("vflip", "true") == "true")
+        self.chk_vflip.setToolTip("Yüz takibi yukarı-aşağı ters gidiyorsa işaretle/kaldır")
+        self.chk_vflip.toggled.connect(lambda v: (self.settings.setValue("vflip", "true" if v else "false"), self.send_track_params(self.phone.status if self.phone else {})))
+        lay.addWidget(self.chk_vflip)
         pv.addWidget(c)
+
+        # --- Kapi bekcisi ---
+        self.guard = Guard(os.path.join(os.environ.get("APPDATA", "."), "GimbalCam", "guard.json"))
+        c, lay = card("Kapı bekçisi")
+        self.chk_guard = QCheckBox("Biri gelirse görüşme penceresini küçült")
+        self.chk_guard.setChecked(self.guard.enabled)
+        self.chk_guard.toggled.connect(self._guard_toggle)
+        lay.addWidget(self.chk_guard)
+        row = QHBoxLayout()
+        b = QPushButton("🚪 Kapıyı çiz")
+        b.setToolTip("Görüntüde kapının olduğu yeri fareyle sürükleyerek işaretle")
+        b.clicked.connect(self._guard_draw)
+        row.addWidget(b)
+        b = QPushButton("🙂 Beni tanı")
+        b.setToolTip("Kameraya bak ve bas; farklı açılardan birkaç kez basabilirsin. Senden başka yüz görünce tetiklenir.")
+        b.clicked.connect(self._guard_enroll)
+        row.addWidget(b)
+        lay.addLayout(row)
+        row = QHBoxLayout()
+        self.cb_win = QComboBox()
+        self.cb_win.setToolTip("Biri gelince küçültülecek pencere (ör. tarayıcıdaki görüşme)")
+        self.cb_win.activated.connect(lambda i: self._guard_set_win())
+        row.addWidget(self.cb_win, 1)
+        b = QPushButton("⟳")
+        b.setFixedWidth(36)
+        b.clicked.connect(self._guard_fill_windows)
+        row.addWidget(b)
+        lay.addLayout(row)
+        row = QHBoxLayout()
+        b = QPushButton("Şimdi küçült")
+        b.clicked.connect(lambda: self.guard.hide())
+        row.addWidget(b)
+        b = QPushButton("Geri getir")
+        b.clicked.connect(lambda: self.guard.restore())
+        row.addWidget(b)
+        lay.addLayout(row)
+        self.guard_info = QLabel("")
+        self.guard_info.setObjectName("muted")
+        self.guard_info.setWordWrap(True)
+        lay.addWidget(self.guard_info)
+        pv.addWidget(c)
+        self.view.drawn.connect(self._guard_door)
+        self._guard_fill_windows()
+        self._guard_status()
 
         # Takip
         c, lay = card("Yüz takibi")
@@ -566,6 +640,11 @@ class MainWindow(QMainWindow):
         self.btn_vcam.setCheckable(True)
         self.btn_vcam.toggled.connect(lambda on: setattr(self, "want_vcam", on))
         lay.addWidget(self.btn_vcam)
+        self.chk_wa = QCheckBox("WhatsApp için uzaklaştır (kenarlar kesilmesin)")
+        self.chk_wa.setChecked(self.settings.value("vcam_wa", "false") == "true")
+        self.chk_wa.setToolTip("WhatsApp sanal kamerayı kenarlardan kırpıyor; görüntüyü 4:3 ortalayıp sığdırır")
+        self.chk_wa.toggled.connect(lambda v: self.settings.setValue("vcam_wa", "true" if v else "false"))
+        lay.addWidget(self.chk_wa)
         row = QHBoxLayout()
         self.btn_rec = QPushButton("● Kayıt")
         self.btn_rec.setObjectName("danger")
@@ -881,13 +960,68 @@ class MainWindow(QMainWindow):
     def phone_tracks(self, st):
         return bool(st.get("faceDetect"))
 
+    # ---- kapi bekcisi ----
+    def _guard_status(self, extra=""):
+        g = self.guard
+        parts = ["Kapı: " + ("işaretli" if g.door else "yok"), f"Yüz kaydı: {len(g.me)}", "Pencere: " + (g.window or "seçilmedi")]
+        self.guard_info.setText((extra + chr(10) if extra else "") + " · ".join(parts))
+
+    def _guard_toggle(self, on):
+        self.guard.enabled = on
+        self.guard.save()
+        self._guard_status()
+
+    def _guard_draw(self):
+        self.view.draw_mode = True
+        self.view.setCursor(Qt.CrossCursor)
+        self._guard_status("Görüntüde kapıyı fareyle sürükleyerek işaretle")
+
+    def _guard_door(self, x0, y0, x1, y1):
+        self.guard.door = (x0, y0, x1, y1)
+        self.guard.prev = None
+        self.guard.save()
+        self._guard_status("Kapı kaydedildi")
+
+    def _guard_enroll(self):
+        if self.frame is None:
+            return self._guard_status("Önce görüntü gelmeli")
+        ok = self.guard.enroll(self.frame)
+        self._guard_status("Yüzün kaydedildi" if ok else "Yüz bulunamadı, kameraya bak")
+
+    def _guard_fill_windows(self):
+        cur = self.guard.window
+        self.cb_win.clear()
+        self.cb_win.addItem("— pencere seç —", "")
+        me = self.windowTitle()
+        for _, t in list_windows():
+            if t != me:
+                self.cb_win.addItem(t[:60], t)
+        if cur:
+            i = self.cb_win.findData(cur)
+            if i < 0:
+                self.cb_win.addItem(cur[:60], cur)
+                i = self.cb_win.count() - 1
+            self.cb_win.setCurrentIndex(i)
+
+    def _guard_set_win(self):
+        t = self.cb_win.currentData() or ""
+        # Tarayici basligi sekmeye gore degisir: tarayici adini (son parca) tut
+        if " - " in t:
+            t = t.rsplit(" - ", 1)[-1]
+        self.guard.window = t
+        self.guard.save()
+        self._guard_status()
+
+    def vflip(self, m):
+        return AxisMap(m.h, (m.v[0], -m.v[1])) if self.chk_vflip.isChecked() else m
+
     def send_track_params(self, st):
         """Takip telefondaysa ayarlari (olculmus eksen eslemesi, goruntu yonu, hiz) telefona bildir."""
         if not self.phone_tracks(st):
             return
         key = (st.get("camera"), self.rot)
         on = self.tracking and self.cal is None and key in self.maps
-        amap = self.maps.get(key) or default_map(self.rot, bool(st.get("front")))
+        amap = self.vflip(self.maps.get(key) or default_map(self.rot, bool(st.get("front"))))
         self.send(t="track", on=on, rot=self.rot, h=amap.h[0], hs=amap.h[1], va=amap.v[0], vs=amap.v[1],
                   speed=self.speed, dead=self.dead, sleep=self.chk_sleep.isChecked())
 
@@ -981,6 +1115,12 @@ class MainWindow(QMainWindow):
             h, v = ("x", sign(rx[0])), ("y", sign(ry[1]))
         else:
             h, v = ("y", sign(ry[0])), ("x", sign(rx[1]))
+        # Dikey olcum (az doku, yuz/VR gozlugu hareketi) sik sik ters cikiyor: dikey icin olculmus varsayilan esleme
+        # her zaman dogru, onu kullan
+        dm = default_map(c["key"][1], bool(self.phone and self.phone.status.get("front")))
+        if v != dm.v:
+            print(f"Dikey olcum varsayilanla celisiyor ({v} != {dm.v}), varsayilan kullaniliyor")
+            h, v = dm.h, dm.v
         self.maps[c["key"]] = AxisMap(h, v)
         names = {"x": "yatay motor", "y": "dikey motor"}
         self.set_note(
@@ -1174,7 +1314,7 @@ class MainWindow(QMainWindow):
                 elif self.rot == 270:
                     tf = cv2.rotate(tf, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 right, up = self.tracker.update(tf, self.speed)
-                mx, my = amap.to_cmd(right, up)
+                mx, my = self.vflip(amap).to_cmd(right, up)
             elif self.tracking:
                 mx, my = self.last_cmd[0] or (0, 0)
             else:
@@ -1200,22 +1340,33 @@ class MainWindow(QMainWindow):
             return
 
         # --- sanal kamera ---
+        # Sabit 1280x720: telefon donunce boyut degismesin (arama uygulamalari eski boyuta sikistiriyordu);
+        # goruntu oran korunarak ortalanir, kenarlar siyah
         f = self.frame
         fh, fw = f.shape[:2]
+        VW, VH = 1920, 1080   # OBS sanal kamerasinin varsayilan boyutu; farkli boyut kose kirpmaya yol aciyordu
+        vf = None
+        if self.want_vcam:
+            bw = VH * 4 // 3 if self.chk_wa.isChecked() else VW   # 4:3 kutu: WhatsApp'in kirptigi kenarlar bos kalsin
+            sc = min(bw / fw, VH / fh)
+            nw, nh = max(2, int(fw * sc)), max(2, int(fh * sc))
+            vf = np.zeros((VH, VW, 3), np.uint8)
+            x0, y0 = (VW - nw) // 2, (VH - nh) // 2
+            vf[y0:y0 + nh, x0:x0 + nw] = cv2.resize(f, (nw, nh), interpolation=cv2.INTER_AREA)
         if self.want_vcam and self.vcam is None:
             try:
                 import pyvirtualcam
-                self.vcam = pyvirtualcam.Camera(width=fw, height=fh, fps=30, fmt=pyvirtualcam.PixelFormat.BGR)
+                self.vcam = pyvirtualcam.Camera(width=VW, height=VH, fps=30, fmt=pyvirtualcam.PixelFormat.BGR)
                 self.out_info.setText(f"Sanal kamera açık: {self.vcam.device}")
             except Exception as ex:
                 self.out_info.setText(f"Sanal kamera açılamadı: OBS Studio kurulu olmalı.\n({ex})")
                 self.btn_vcam.setChecked(False)
         if self.vcam is not None:
-            if not self.want_vcam or (fw, fh) != (self.vcam.width, self.vcam.height):
+            if not self.want_vcam:
                 self.vcam.close()
                 self.vcam = None
             else:
-                self.vcam.send(f)
+                self.vcam.send(vf)
 
         # --- kayit ---
         if self.writer is not None:
@@ -1236,6 +1387,24 @@ class MainWindow(QMainWindow):
             disp = f.copy()
             x, y, bw, bh = self.tracker.box
             cv2.rectangle(disp, (x, y), (x + bw, y + bh), (90, 220, 120), 3)
+        why = self.guard.check(f)
+        if why:
+            self.set_note(f"🚪 {why} — pencere küçültüldü")
+        g = self.guard
+        if g.enabled and (g.door or g.faces) or self.view.draw_mode or self.view._drag:
+            if disp is f:
+                disp = f.copy()
+            H, W = disp.shape[:2]
+            if self.view._drag:
+                (ax, ay), (bx, by) = self.view._drag
+                cv2.rectangle(disp, (int(ax * W), int(ay * H)), (int(bx * W), int(by * H)), (60, 210, 255), 3)
+            elif g.door:
+                hot = time.time() - g.fired_at < 2
+                cv2.rectangle(disp, (int(g.door[0] * W), int(g.door[1] * H)), (int(g.door[2] * W), int(g.door[3] * H)),
+                              (60, 60, 255) if hot else (60, 210, 255), 3)
+            if g.enabled:
+                for (x0, y0, x1, y1), known in g.faces:
+                    cv2.rectangle(disp, (int(x0 * W), int(y0 * H)), (int(x1 * W), int(y1 * H)), (90, 220, 120) if known else (60, 60, 255), 2)
         self.view.show_frame(disp)
         gs = st.get("gimbal", "?")
         note = self.note[0] if time.time() - self.note[1] < 8 else ""
